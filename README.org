@@ -1,0 +1,13 @@
+
+* HIRES extraction routines
+
+These routines extract velocity-calibrated 2D spectra of each emission line. 
+
+We start with:
+
+1. 2D Keck HIRES slit spectral images (FITS files). 
+2. The location on the chip of the spectrograph orders (provided as a DS9 region file).
+3. A wavelength calibration for the entire image (FITS image of wavelength of each pixel).
+4. A list of the emission lines of interest with their rest wavelengths
+
+
