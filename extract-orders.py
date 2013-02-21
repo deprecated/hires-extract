@@ -4,7 +4,7 @@ import pyregion
 import argparse
 import scipy.ndimage as ndi
 import skimage.morphology
-
+import os
 
 # Mapping between the boxes that we added by hand and the labels of the contiguous patches
 box2label = {
@@ -35,9 +35,18 @@ def dilate_mask(mask, margin=1):
                ).astype(bool)
 
 
+def parabolic_distorsion(iorder):
+    """
+    This is most notable in the red, and seems to be zero for orders > 60
+    """
+    if iorder > 60:
+       return 0.0
+    else:
+       return 2.0*(60.0 - iorder)/(60.0 - 51.0)
+    
 
 
-def extract_orders(specfile, wavfile, regionfile,
+def extract_orders(specfile, wavfile, regionfile, outdir, 
                    wavmin=1000.0, wavmax=10000.0):
     """
     Go through all the orders, extracting each one
@@ -99,7 +108,11 @@ def extract_orders(specfile, wavfile, regionfile,
 
         # enclosing rectangle around this entire order
         bbox, = ndi.find_objects(widemask.astype(int))
-        
+        # Add a few more pixels at the top to give equal top/bottom margins
+        # We have to do it like this since slice.stop is read-only and tuples are immutable
+        start, stop, step = bbox[0].indices(wavhdu.data.shape[0])
+        bbox = (slice(start, stop+6), bbox[1])
+
         imorder = imhdu.data.copy()[bbox]
         wavorder = wavhdu.data.copy()[bbox]
         # Construct a mask of all pixels both methods say should be in this order
@@ -116,16 +129,23 @@ def extract_orders(specfile, wavfile, regionfile,
         # Remove the horizontal tilt of the orders
         #
         ny, nx = wavorder.shape
-        jshifts = (np.arange(nx)*np.tan(np.radians(tilt))).astype(int) # required shift of each column
+        # First the linear tilt
+        yshifts = np.arange(nx)*np.tan(np.radians(tilt))
+        # Then the parabolic residual distortion 
+        yshifts += parabolic_distorsion(iorder)*(2*np.arange(nx).astype(float)/nx - 1.0)**2 
+        jshifts = yshifts.astype(int) # required shift of each column
+        jshiftset = set(jshifts)
         jtrim = jshifts.max() # Amount to trim off the top of the strip at the end
         jshifts = np.vstack( [jshifts]*ny ) # Expand back to 2D
-        for chunk in ndi.find_objects(jshifts): # Process in chunks that have the same jshift
-            jshift = jshifts[chunk][0,0]        # How much to shift this chunk
-            # apply the shift to all the arrays
-            imorder[chunk] = np.roll(imorder[chunk], -jshift, axis=0)
-            wavorder[chunk] = np.roll(wavorder[chunk], -jshift, axis=0)
-            m[chunk] = np.roll(m[chunk], -jshift, axis=0)
-            mm[chunk] = np.roll(mm[chunk], -jshift, axis=0)
+        for jshift in jshiftset:            # Consider each unique value of jshift
+            # Split up into one or more contiguous chunks that have this value of jshift
+            chunklabels, nlabels = ndi.label(jshifts == jshift) 
+            for chunk in ndi.find_objects(chunklabels):
+                # apply the shift to all the arrays
+                imorder[chunk] = np.roll(imorder[chunk], -jshift, axis=0)
+                wavorder[chunk] = np.roll(wavorder[chunk], -jshift, axis=0)
+                m[chunk] = np.roll(m[chunk], -jshift, axis=0)
+                mm[chunk] = np.roll(mm[chunk], -jshift, axis=0)
             
         # Use a single average wavelength for each column
         meanwav = np.sum(wavorder*m, axis=0) / m.sum(axis=0)
@@ -134,10 +154,12 @@ def extract_orders(specfile, wavfile, regionfile,
         imorder = imorder[:-jtrim,:]
         meanwav = meanwav[:-jtrim,:]
         # And save each order to FITS files
-        pyfits.PrimaryHDU(imorder).writeto("test-order{}-im.fits".format(iorder), 
-                                           clobber=True)
-        pyfits.PrimaryHDU(meanwav).writeto("test-order{}-wav.fits".format(iorder), 
-                                           clobber=True)
+        pri = pyfits.PrimaryHDU()
+        sci = pyfits.ImageHDU(imorder, name='SCI')
+        wav = pyfits.ImageHDU(meanwav, name='WAV')
+        outfile = "{}-order{}.fits".format(os.path.split(specfile)[-1], iorder)
+        outfile = os.path.join(outdir, outfile)
+        pyfits.HDUList([pri, sci, wav]).writeto(outfile, clobber=True)
 
 
 if __name__ == "__main__":
@@ -156,7 +178,10 @@ if __name__ == "__main__":
     parser.add_argument("regionfile", type=str, 
                         help="""Name of DS9 region file containing orders (sans extension)"""
                         )
-    
+    parser.add_argument("--outdir", "-o", type=str, default="Extract", 
+                        help="""Directory for placing the results"""
+                        )
+
     cmd_args = parser.parse_args()
 
     extract_orders(**vars(cmd_args))
