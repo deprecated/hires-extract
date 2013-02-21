@@ -19,3 +19,4 @@ We start with:
 + We have our boxes, and then we have the calibrated pixel regions. 
 + The problem with the boxes is that they overlap
   + Possible solution: thin them down so they are just the central part of the slit in each order
+  + This did work just about
