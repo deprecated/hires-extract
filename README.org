@@ -11,6 +11,29 @@ We start with:
 4. A list of the emission lines of interest with their rest wavelengths
 
 
+** Extracting and pixel-rectifying the orders
+
+#+BEGIN_SRC sh :results output
+python extract-orders.py --help
+#+END_SRC
+
+#+RESULTS:
+#+begin_example
+usage: extract-orders.py [-h] [--outdir OUTDIR] specfile wavfile regionfile
+
+Extract individual spectral orders from a Keck HIRES image
+
+positional arguments:
+  specfile              Name of spectral image FITS file (sans extension)
+  wavfile               Name of wavelength FITS file (sans extension)
+  regionfile            Name of DS9 region file containing orders (sans
+                        extension)
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --outdir OUTDIR, -o OUTDIR
+                        Directory for placing the results (default: Extract)
+#+end_example
 
 ** Design notes
 
