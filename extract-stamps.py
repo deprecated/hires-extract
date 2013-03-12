@@ -92,7 +92,12 @@ def extract_stamps(specid, extractdir, stampdir):
         # Determine the WCS parameters
         # Fit a linear function to 1D velocity versus x-index
         xpix = np.arange(nx, dtype=np.float) + 1.0
-        m, b = linsolve(xpix, vpix, plotname=sanitize(lineid))
+        try:
+            m, b = linsolve(xpix, vpix, plotname=sanitize(lineid))
+        except ValueError:
+            print "**** Error....  couldn't solve linear equation"
+            print "**** Skipping " + lineid
+            continue
         hdustamp = pyfits.PrimaryHDU(imstamp)
         hdustamp.header.update(
             CRPIX1=0.0, CRVAL1=b, CD1_1=m, CD1_2=0.0,
