@@ -72,11 +72,20 @@ def extract_stamps(specid, extractdir, stampdir):
         wavs[~np.isfinite(wavs)] = 0.0  # eliminate NaNs
         # Velocities in km/s with respect to rest wavelength of line
         vels = (LIGHT_SPEED_CGS/KM_CGS) * (wavs - emline["wav"])/emline["wav"]
+        print vels[wavs != 0.0].max(), vels[wavs != 0.0].min()
         # Extract the window of VMIN -> VMAX
         ny, nx = vels.shape
-        v1d = vels[ny/2, :]
+        if emline["jcent"] > 0:
+            jcent = emline["jcent"]
+        else:
+            jcent = ny/2
+        v1d = vels[jcent, :]
+        print v1d.max()
         i1 = np.argmin(np.abs(v1d - VMIN))
         i2 = np.argmin(np.abs(v1d - VMAX))
+        # print i1, i2
+        # print v1d[i1] - VMIN, v1d[i1] - VMAX
+        # print v1d[i2] - VMIN, v1d[i2] - VMAX
         vpix = v1d[i1:i2]
         imstamp = image[:, i1:i2]
         ny, nx = imstamp.shape
@@ -88,7 +97,7 @@ def extract_stamps(specid, extractdir, stampdir):
         hdustamp.header.update(
             CRPIX1=0.0, CRVAL1=b, CD1_1=m, CD1_2=0.0,
             CTYPE1="VELO", CUNIT1="km/s",
-            CRPIX2=ny/2, CRVAL2=0.0, CD2_1=0.0, CD2_2=PLATE_SCALE,
+            CRPIX2=jcent, CRVAL2=0.0, CD2_1=0.0, CD2_2=PLATE_SCALE,
             CTYPE2="PARAM", CUNIT2="arcsec",
         )
         outfile = os.path.join(
