@@ -3,8 +3,11 @@ import astropy.io.fits as pyfits
 import pyregion
 import argparse
 import scipy.ndimage as ndi
+import scipy.interpolate
 import skimage.morphology
 import os
+
+INTERPOLATE="linear"
 
 # Mapping between the boxes that we added by hand and
 # the labels of the contiguous patches
@@ -159,17 +162,41 @@ def extract_orders(specfile, wavfile, regionfile, outdir,
         jshiftset = set(jshifts)
         # Amount to trim off the top of the strip at the end
         jtrim = jshifts.max()
-        jshifts = np.vstack([jshifts]*ny)  # Expand back to 2D
-        for jshift in jshiftset:  # Consider each unique value of jshift
-            # Split up into one or more contiguous chunks
-            # that have this value of jshift
-            chunklabels, nlabels = ndi.label(jshifts == jshift)
-            for chunk in ndi.find_objects(chunklabels):
-                # apply the shift to all the arrays
-                # (except meanwav, which is constant in y)
-                imorder[chunk] = np.roll(imorder[chunk], -jshift, axis=0)
-                m[chunk] = np.roll(m[chunk], -jshift, axis=0)
-                mm[chunk] = np.roll(mm[chunk], -jshift, axis=0)
+        if not INTERPOLATE is None:
+            # These are the grid points we want
+            grid_x, grid_y = np.meshgrid(
+                np.arange(nx, dtype=np.float), np.arange(ny, dtype=np.float)
+            )
+            # And these are the coordinates we currently have
+            # Note that only the y's change, not the x's
+            x, y = grid_x, grid_y - yshifts[np.newaxis, :]
+            # Interpolate image onto new grid
+            imorder = scipy.interpolate.griddata(
+                (x.ravel(), y.ravel()), imorder.ravel(),
+                (grid_x, grid_y), method=INTERPOLATE
+            )
+            # Use nearest-neighbor for the masks,
+            # so they don't get converted to reals
+            m = scipy.interpolate.griddata(
+                (x.ravel(), y.ravel()), m.ravel(),
+                (grid_x, grid_y), method="nearest"
+            )
+            mm = scipy.interpolate.griddata(
+                (x.ravel(), y.ravel()), mm.ravel(),
+                (grid_x, grid_y), method="nearest"
+            )
+        else:
+            jshifts = np.vstack([jshifts]*ny)  # Expand back to 2D
+            for jshift in jshiftset:  # Consider each unique value of jshift
+                # Split up into one or more contiguous chunks
+                # that have this value of jshift
+                chunklabels, nlabels = ndi.label(jshifts == jshift)
+                for chunk in ndi.find_objects(chunklabels):
+                    # apply the shift to all the arrays
+                    # (except meanwav, which is constant in y)
+                    imorder[chunk] = np.roll(imorder[chunk], -jshift, axis=0)
+                    m[chunk] = np.roll(m[chunk], -jshift, axis=0)
+                    mm[chunk] = np.roll(mm[chunk], -jshift, axis=0)
 
         # Trim the useless space off the top
         imorder = imorder[:-jtrim, :]
