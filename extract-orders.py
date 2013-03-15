@@ -7,7 +7,7 @@ import scipy.interpolate
 import skimage.morphology
 import os
 
-INTERPOLATE="linear"
+INTERPOLATE = "linear"
 
 # Mapping between the boxes that we added by hand and
 # the labels of the contiguous patches
@@ -65,6 +65,9 @@ def extract_orders(specfile, wavfile, regionfile, outdir,
     # Tilt angles from the horizontal
     tilts = [r.coord_list[4] for r in regions]
 
+    # Fractional y shift of box center from nearest grid point
+    ypix_fractions = [r.coord_list[1] - int(r.coord_list[1]) for r in regions]
+
     wide_filters = regions.get_filter()
 
     # Restrict attention to the center of each slit
@@ -87,12 +90,12 @@ def extract_orders(specfile, wavfile, regionfile, outdir,
     print "Number of order boxes found: ", len(ordernames)
     print "Number of objects found: ", nlabels
 
-    for widefilter, orderfilter, ordername, tilt in zip(
-            wide_filters, filters, ordernames, tilts):
+    for widefilter, orderfilter, ordername, tilt, ypix_frac in zip(
+            wide_filters, filters, ordernames, tilts, ypix_fractions):
         # All pixels that we think are in the central part
         # of the slit in this order
         ordermask = orderfilter.mask(wavhdu.data.shape)
-        # and the same for the entire order, but adding some padding
+        # and the same for the entire order (adding some padding)
         widemask = dilate_mask(widefilter.mask(wavhdu.data.shape), 3)
 
         # First find wavelengths that ought to fall in the order
@@ -158,11 +161,13 @@ def extract_orders(specfile, wavfile, regionfile, outdir,
         # Then the parabolic residual distortion
         yshifts += parabolic_distorsion(iorder)*(
             2*np.arange(nx).astype(float)/nx - 1.0)**2
+        # Finally, align the box center to the pixel grid
+        yshifts += ypix_frac
         jshifts = yshifts.astype(int)  # required shift of each column
         jshiftset = set(jshifts)
         # Amount to trim off the top of the strip at the end
         jtrim = jshifts.max()
-        if not INTERPOLATE is None:
+        if INTERPOLATE is not None:
             # These are the grid points we want
             grid_x, grid_y = np.meshgrid(
                 np.arange(nx, dtype=np.float), np.arange(ny, dtype=np.float)
