@@ -13,7 +13,7 @@ def remove_overlap(specid, extractdir):
     Loop through the orders, dealing with each one
     """
     # Utility functions
-    def order_file(iorder, suffix1="s", suffix2="-cr"):
+    def order_file(iorder, suffix1="s", suffix2=""):
         """Return the rectified image of the  isolated order
 
         Optional argument suffix2 can be used to select the
@@ -54,6 +54,11 @@ def remove_overlap(specid, extractdir):
         image = hdulist["SCI"].data
         ny, nx = image.shape
         y = np.arange(ny) + 1.0  # 1-based scale for FITS y-pixels
+        # Fiddle the positions
+        if "y1_02" in pars:
+            pars["y1_02"] += 0.25
+        if "y1_03" in pars:
+            pars["y1_03"] += 0.25
         # Loop over each image column
         for i in range(nx):
             imcol = image[:, i]
@@ -62,10 +67,10 @@ def remove_overlap(specid, extractdir):
                 imcol -= pars["const"] + pars["linear"] * y
             # Subtract the previous order at the top
             if "y1_02" in pars:
-                imcol -= other_order("y1_02", "w_02", "sigma_02", -9, None)
+                imcol -= other_order("y1_02", "w_02", "sigma_02", 52, 55)
             # Subtract the next order at the bottom
             if "y1_03" in pars:
-                imcol -= other_order("y1_03", "w_03", "sigma_03", None, 9)
+                imcol -= other_order("y1_03", "w_03", "sigma_03", 8, 11)
         hdulist.writeto(order_file(iorder, suffix1="o"), clobber=True)
 
 
