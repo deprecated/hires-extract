@@ -58,7 +58,7 @@ def extract_orders(specfile, wavfile, regionfile, outdir,
     Go through all the orders, extracting each one
     """
 
-    imhdu, = pyfits.open(specfile + ".fits")
+    imhdu = pyfits.open(specfile + ".fits")[0]
     wavhdu, = pyfits.open(wavfile + ".fits")
     regions = pyregion.open(regionfile + ".reg")
 
