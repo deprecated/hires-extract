@@ -13,6 +13,8 @@ KM_CGS = 1.0e5
 VMIN, VMAX = -100.0, 100.0
 # Size of pixels in arcsec
 PLATE_SCALE = 0.382
+# j-limits of the extracted order
+J1, J2 = 13, 49
 
 
 def extract_stamps(specid, extractdir, stampdir):
@@ -21,8 +23,9 @@ def extract_stamps(specid, extractdir, stampdir):
     produce a postage stamp calibrated 2D spectrum
     """
     # Utility functions
-    def order_file(iorder, suffix1="b", suffix2="-cr"):
-        """Return the rectified, CR-rejected image of the  isolated order"""
+    def order_file(iorder, suffix1="o", suffix2=""):
+        """Return the CR-rejected, rectified, de-overlapped
+        image of the  isolated order"""
         return os.path.join(
             extractdir,
             "{}{}-order{}{}.fits".format(specid, suffix1, iorder, suffix2)
@@ -30,7 +33,7 @@ def extract_stamps(specid, extractdir, stampdir):
 
     def sanitize(s):
         """
-        Make s string safe for use as a filename
+        Make a string safe for use as a filename
 
         Eliminate [ and ], and change SPACE to _
         """
@@ -75,11 +78,7 @@ def extract_stamps(specid, extractdir, stampdir):
         print vels[wavs != 0.0].max(), vels[wavs != 0.0].min()
         # Extract the window of VMIN -> VMAX
         ny, nx = vels.shape
-        if emline["jcent"] > 0:
-            jcent = emline["jcent"]
-        else:
-            jcent = ny/2
-        v1d = vels[jcent, :]
+        v1d = vels[ny/2, :]
         print v1d.max()
         i1 = np.argmin(np.abs(v1d - VMIN))
         i2 = np.argmin(np.abs(v1d - VMAX))
@@ -87,7 +86,7 @@ def extract_stamps(specid, extractdir, stampdir):
         # print v1d[i1] - VMIN, v1d[i1] - VMAX
         # print v1d[i2] - VMIN, v1d[i2] - VMAX
         vpix = v1d[i1:i2]
-        imstamp = image[:, i1:i2]
+        imstamp = image[J1:J2, i1:i2]
         ny, nx = imstamp.shape
         # Determine the WCS parameters
         # Fit a linear function to 1D velocity versus x-index
@@ -95,14 +94,14 @@ def extract_stamps(specid, extractdir, stampdir):
         try:
             m, b = linsolve(xpix, vpix, plotname=sanitize(lineid))
         except ValueError:
-            print "**** Error....  couldn't solve linear equation"
+            print "**** Error....  couldn't solve linear  equation"
             print "**** Skipping " + lineid
             continue
         hdustamp = pyfits.PrimaryHDU(imstamp)
         hdustamp.header.update(
             CRPIX1=0.0, CRVAL1=b, CD1_1=m, CD1_2=0.0,
             CTYPE1="VELO", CUNIT1="km/s",
-            CRPIX2=jcent, CRVAL2=0.0, CD2_1=0.0, CD2_2=PLATE_SCALE,
+            CRPIX2=0.5*(1 + J2 - J1), CRVAL2=0.0, CD2_1=0.0, CD2_2=PLATE_SCALE,
             CTYPE2="PARAM", CUNIT2="arcsec",
         )
         outfile = os.path.join(
