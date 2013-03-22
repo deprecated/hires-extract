@@ -1,23 +1,22 @@
-"""
-Utility functions for dealing with multiplets:
+"""Utility functions for dealing with multiplets:
 
     multiplet_moments - Find velocity-like moments 0 to 3 of a
                         multiplet with known component intensities
 
-    equivalent_doublet - TODO Find the unique doublet that has a
+    equivalent_doublet - Find the unique doublet that has a
                          given set of velocity-like moments 0 to 3
 
     undoubletify - Deconvolve a doublet by the subtract-and-shift method
 
 """
 
+import yaml
 import numpy as np
 from scipy.interpolate import interp1d
 
 
 def multiplet_moments(wavs, intensities):
-    """
-    Find the moments (intensity, mean, sigma, skewness) of a multiplet
+    """Find the moments (intensity, mean, sigma, skewness) of a multiplet
 
     Parameters
     ----------
@@ -31,6 +30,7 @@ def multiplet_moments(wavs, intensities):
     -------
     moments : dict
          {intensity, mean, sigma, skewness}
+
     """
 
     ##
@@ -47,6 +47,9 @@ def multiplet_moments(wavs, intensities):
     wavs, intensities = np.atleast_1d(wavs, intensities)
     assert len(wavs) == len(intensities), (
         "Length mismatch between wavs and intensities")
+    if len(wavs) == 1:
+        return {"intensity": intensities[0], "mean": wavs[0], "sigma": 0.0,
+                "skewness": 0.0}
 
     # First the "raw" moments, M_0 to M_3:
     M = [np.sum(intensities*wavs**k) for k in range(4)]
@@ -61,9 +64,9 @@ def multiplet_moments(wavs, intensities):
 
 
 def equivalent_doublet(intensity, mean, sigma, skew):
-    """
-    Find the unique doublet of delta functions that has a given combination of
-    intensity, mean, sigma, and skewness.
+    """Find the unique doublet of delta functions that has a given
+    combination of intensity, mean, sigma, and skewness.
+
     """
     #
     # This uses the notation of "Moments of a pure doublet" in stis-lv.org
@@ -86,9 +89,50 @@ def equivalent_doublet(intensity, mean, sigma, skew):
     }
 
 
-def undoubletify(spectrum, a, x0):
+def partition_doublet(wavs, intensities):
+    """Partition a multiplet into two groups, either side of the largest gap
+
+    Return the doublet that corresponds to treating each group as a
+    single component.  Unlike the equivalent_doublet function, each
+    component of the doublet has its own internal sigma, but hopefully
+    these are much smaller than the width of the entire multiplet.
+
     """
-    Deconvolve a doublet line profile using repeated subtraction method
+    assert len(wavs) == len(intensities), (
+        "Length mismatch between wavs and intensities")
+    # Make sure wavelengths are in ascending order
+    wavs, intensities = np.atleast_1d(*zip(*sorted(zip(wavs, intensities))))
+    # Find where the split the multiplet in two
+    isplit = 1 + np.argmax(np.diff(wavs))
+    wavs1, wavs2 = wavs[:isplit], wavs[isplit:]
+    intensities1, intensities2 = intensities[:isplit], intensities[isplit:]
+    moms1 = multiplet_moments(wavs1, intensities1)
+    moms2 = multiplet_moments(wavs2, intensities2)
+    
+    I1, I2 = moms1["intensity"], moms2["intensity"]
+    a = I2/I1
+    v1, v2 = moms1["mean"], moms2["mean"]
+    delta = v2 - v1
+    vmean = (v1 + a*v2)/(1.0 + a)
+    x1, x2 = v1 - vmean, v2 - vmean
+    if I1 > I2:
+        return {
+            "x1": x1, "x2": x2, "I1": I1, "I2": I2, "a": a, "delta": delta,
+            "v1": v1, "v2": v2, "sig1": moms1["sigma"], "sig2": moms2["sigma"],
+            "skew1": moms1["skewness"], "skew2": moms2["skewness"],
+        }
+    else:
+        return {
+            "x1": x2, "x2": x1, "I1": I2, "I2": I1,
+            "a": 1.0/a, "delta": -delta,
+            "v1": v2, "v2": v1, "sig1": moms2["sigma"], "sig2": moms1["sigma"],
+            "skew1": moms2["skewness"], "skew2": moms1["skewness"],
+        }
+
+
+def undoubletify(spectrum, a, x0):
+    """Deconvolve a doublet line profile using repeated subtraction
+    method
 
     Input arguments:
 
@@ -107,9 +151,10 @@ def undoubletify(spectrum, a, x0):
     """
 
     def shift_right(array, xshift):
-        """
-        Shift an array by xshift pixels to the right along the last axis
-        with linear interpolation and infinite zero padding from the left
+        """Shift an array by xshift pixels to the right along the last axis
+        with linear interpolation and infinite zero padding from the
+        left
+
         """
         f = interp1d(x, array, bounds_error=False, fill_value=0.0)
         # The array is shifted right, so the coords must be shifted left
@@ -121,12 +166,14 @@ def undoubletify(spectrum, a, x0):
         a = 1./a
         x0 = -x0
 
+    print "Doublet parameters: a = {}, x0 = {}".format(a, x0)
+
     # Construct an array of nx pixel values along the dispersion direction
     nx = spectrum.shape[-1]
     x = np.arange(nx)
     # We can truncate the series once the entire profile has
     # shifted off the grid
-    nterms = int(nx/x0)
+    nterms = abs(int(nx/x0))
     print "Using ", nterms, " terms"
     # Calculate the series
     newspectrum = spectrum
@@ -134,6 +181,12 @@ def undoubletify(spectrum, a, x0):
         newspectrum += (-a)**n * shift_right(spectrum, n*x0)
 
     return newspectrum
+
+
+def pprint_dict(d):
+    """Pretty print a dict that may have numpy scalars in it"""
+    return yaml.dump({k: float(v) for k, v in d.items()},
+                     default_flow_style=False)
 
 
 if __name__ == "__main__":
@@ -152,7 +205,10 @@ if __name__ == "__main__":
     light_speed_kms = 2.99792458e5
 
     moments = multiplet_moments(triplet_wavs, triplet_weights)
-    print moments
+    print "O I 6046 multiplet:"
+    print "-------------------"
+    print pprint_dict(moments)
+
     intensity = 1.0
     mean = 0.0
     # convert to km/s
@@ -160,8 +216,16 @@ if __name__ == "__main__":
     assert (sigma - 5.08) < 0.01, "Sigma = {} is not right".format(sigma)
 
     doublet = equivalent_doublet(intensity, mean, sigma,  moments["skewness"])
-    print doublet
+    print "Equivalent doublet"
+    print pprint_dict(doublet)
 
+    triplet_vels = [(wav - moments["mean"]) * light_speed_kms /
+                    moments["mean"] for wav in triplet_wavs]
+    triplet_weights = [w/moments["intensity"] for w in triplet_weights]
+    doublet = partition_doublet(triplet_vels, triplet_weights)
+    print "Partitioned doublet"
+    print pprint_dict(doublet)
+    
     # Test mechanism on an [O I] sextuplet, assuming the upper levels are
     # distributed according to statistical weight 2 J + 1
 
@@ -185,12 +249,22 @@ if __name__ == "__main__":
                          zip(sextuplet_A21s, sextuplet_J2s)]
 
     moments = multiplet_moments(sextuplet_wavs, sextuplet_weights)
-    print moments
+    print "O I 7002 multiplet:"
+    print "-------------------"
+    print pprint_dict(moments)
+
     intensity = 1.0
     mean = 0.0
     # convert to km/s
     sigma = moments["sigma"] * light_speed_kms / moments["mean"]
     assert (sigma - 6.33) < 0.01, "Sigma = {} is not right".format(sigma)
-
     doublet = equivalent_doublet(intensity, mean, sigma,  moments["skewness"])
-    print doublet
+    print "Equivalent doublet"
+    print pprint_dict(doublet)
+
+    sextuplet_vels = [(wav - moments["mean"]) * light_speed_kms /
+                      moments["mean"] for wav in sextuplet_wavs]
+    sextuplet_weights = [w/moments["intensity"] for w in sextuplet_weights]
+    doublet = partition_doublet(sextuplet_vels, sextuplet_weights)
+    print "Partitioned doublet"
+    print pprint_dict(doublet)
