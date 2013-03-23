@@ -8,8 +8,21 @@ import json
 import numpy as np
 import astropy.io.fits as pyfits
 # import fit_utils
-from doublet_utils import multiplet_moments
+from doublet_utils import multiplet_moments, equivalent_doublet
 from pv_utils import make_grids
+
+
+def find_doublet(moments):
+    """
+    Convert moments into two delta functions
+    """
+    components = {"I1": [], "I2": [], "v1": [], "v2": []}
+    for intensity, mean, sigma, skewness in zip(
+            *[moments[m] for m in "intensity", "mean", "sigma", "skewness"]):
+        doublet = equivalent_doublet(intensity, mean, sigma, skewness)
+        for k in ["I1", "I2", "v1", "v2"]:
+            components[k].append(doublet[k])
+    return components
 
 
 def _find_moments_array(S, U, minfrac=0.05):
@@ -61,10 +74,10 @@ def find_moments(image, velarray, method="array", **kwds):
             "array": _find_moments_array}[method](image, velarray, **kwds)
 
 
-def save_moments(moments, prefix, method="json"):
+def save_data(data, prefix, method="json"):
     if method == "json":
         with open(prefix + "-moments.json", "w") as f:
-            json.dump(moments, f, indent=2)
+            json.dump(data, f, indent=2)
     elif method == "table":
         raise NotImplementedError
     else:
@@ -86,10 +99,11 @@ def fit_nebula(stampname, vrange,
     u = U.mean(axis=0)          # Collapse velocities
     i1 = len(u[u < vrange[0]])
     i2 = len(u[u < vrange[1]])
-    moments = find_moments(image[:, i1:i2], U[:, i1:i2], minfrac=min_fraction)
+    data = find_moments(image[:, i1:i2], U[:, i1:i2], minfrac=min_fraction)
     y = Y[:, i1:i2].mean(axis=1)
-    moments.update(position=y.astype(float).tolist())
-    save_moments(moments, stamp_prefix)
+    data.update(position=y.astype(float).tolist())
+    data.update(find_doublet(data))
+    save_data(data, stamp_prefix)
 
 
 if __name__ == "__main__":
