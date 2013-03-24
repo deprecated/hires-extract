@@ -35,7 +35,7 @@ def plot_moments(prefix):
     plt.plot(y, data["sigma"])
     plt.ylabel("Sigma")
     plt.grid()
-    plt.ylim(0.0, None)
+    # plt.ylim(0.0, None)
     plt.setp(plt.gca().get_xticklabels(), visible=False)
 
     # Skewness
