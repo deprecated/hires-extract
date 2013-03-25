@@ -7,9 +7,11 @@ import os
 import json
 import numpy as np
 import astropy.io.fits as pyfits
-# import fit_utils
+import lmfit
 from doublet_utils import multiplet_moments, equivalent_doublet
 from pv_utils import make_grids
+from fit_utils import init_single_component, model_minus_data
+from fit_utils import model, save_params
 
 
 def find_doublet(moments):
@@ -84,27 +86,84 @@ def save_data(data, prefix, method="json"):
         raise ValueError("Unrecognised method: " + method)
 
 
-def calculate_moments_etc(stampname, vrange, stampdir="Stamps",
-                          extra_suffix="", min_fraction=0.05):
-    # Read from the FITS file
+def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
+         extra_suffix="", min_fraction=0.05):
+
+    # Step 1: Read data from the FITS file
     stamp_prefix = os.path.join(stampdir, stampname + "-stamp-nc")
     if extra_suffix:
         stamp_prefix = '-'.join([stamp_prefix, extra_suffix])
-    hdulist = pyfits.open(stamp_prefix + ".fits")
+    # Open FITS file in "update" mode since we will be saving new
+    # images to it later
+    hdulist = pyfits.open(stamp_prefix + ".fits", mode="update")
     # Assume that the first HDU in the file is the image
     image = hdulist[0].data
     U, Y = make_grids(hdulist[0].header)
+
+    # Step 2: Calculate moments and 2-delta decomposition
+    #
     # When calculating the rectangular box to use for the moments (but
     # only then), we ignore variations in the velocity scale with
     # y-position
     u = U.mean(axis=0)          # Collapse velocities
     i1 = len(u[u < vrange[0]])
     i2 = len(u[u < vrange[1]])
-    data = find_moments(image[:, i1:i2], U[:, i1:i2], minfrac=min_fraction)
+    mdata = find_moments(image[:, i1:i2], U[:, i1:i2], minfrac=min_fraction)
     y = Y[:, i1:i2].mean(axis=1)
-    data.update(position=y.astype(float).tolist())
-    data.update(find_doublet(data))
-    save_data(data, stamp_prefix)
+    mdata.update(position=y.astype(float).tolist())
+    mdata.update(find_doublet(mdata))
+    save_data(mdata, stamp_prefix)
+
+    # Step 3: Fit polynomials to the BG portion of 2-delta decomposition
+    #
+    # Mask in y that selects only BG positions
+    mask = ((y > ylo[0]) & (y < ylo[1])) | ((y > yhi[0]) & (y < yhi[1]))
+    print mask
+    print y[mask]
+    neb_coeffs = {"I1": None, "I2": None, "v1": None, "v2": None}
+    for linepar in neb_coeffs:
+        print linepar
+        print np.array(mdata[linepar])[mask]
+        neb_coeffs[linepar] = np.polyfit(
+            y[mask], np.array(mdata[linepar])[mask], 2)
+
+    # Step 4: initialize 2D model with 2 Gaussian components
+    #
+    params = lmfit.Parameters()
+    # Assume all components have a constant width to start with
+    init_single_component(params, "A", i_coeffs=neb_coeffs["I1"],
+                          u_coeffs=neb_coeffs["v1"],
+                          w_coeffs=[0.0, 0.0, 5.0])
+    init_single_component(params, "B", i_coeffs=neb_coeffs["I2"],
+                          u_coeffs=neb_coeffs["v2"],
+                          w_coeffs=[0.0, 0.0, 5.0])
+
+    # Step 5: fit the model to the BG portion of the 2d data
+    #
+    # Construct 2d mask of only BG positions and only velocities in
+    # the defined window
+    Ymask = ((Y > ylo[0]) & (Y < ylo[1])) | ((Y > yhi[0]) & (Y < yhi[1]))
+    Umask = (U >= vrange[0]) & (U < vrange[1])
+    bgmask = Ymask & Umask
+    result = lmfit.minimize(model_minus_data, params,
+                            args=(U[bgmask], Y[bgmask], image[bgmask]))
+    print result.message
+
+    # Print a verbose report of the error estimates and correlatons
+    lmfit.report_errors(params)
+
+    # Step 6: Save everything
+    #
+    # Save the resulting BG-subtracted image in-place to the same FITS
+    # file as a separate image HDU and do the same with the model
+    # nebular BG image
+    imbg = model(U, Y, params)
+    improp = image - imbg
+    hdulist.append(pyfits.ImageHDU(improp, name="PROP"))
+    hdulist.append(pyfits.ImageHDU(imbg, name="NEB"))
+    hdulist.flush()
+    # Save the fit parameters as well
+    save_params(params, stamp_prefix + "-bgfit.json")
 
 
 if __name__ == "__main__":
@@ -121,6 +180,14 @@ if __name__ == "__main__":
         help="""Range of velocities to use for calculating moments"""
     )
     parser.add_argument(
+        "--ylo", type=float, nargs=2, default=[-6.5, -5.0],
+        help="""Range of positions for lower BG sample"""
+    )
+    parser.add_argument(
+        "--yhi", type=float, nargs=2, default=[5.0, 7.0],
+        help="""Range of positions for upper BG sample"""
+    )
+    parser.add_argument(
         "--stampdir", type=str, default="Stamps",
         help="""Directory for placing the results"""
     )
@@ -134,4 +201,4 @@ if __name__ == "__main__":
         pixel should contribute to the velocity moments"""
     )
     cmd_args = parser.parse_args()
-    calculate_moments_etc(**vars(cmd_args))
+    main(**vars(cmd_args))
