@@ -27,6 +27,7 @@ def plot_moments(prefix):
     plt.plot(y, data["v2"], label='2')
     plt.ylabel("Velocity")
     plt.grid()
+    plt.ylim(-5.0, 40.0)
     plt.legend(fontsize="x-small")
     plt.setp(plt.gca().get_xticklabels(), visible=False)
 
@@ -35,7 +36,7 @@ def plot_moments(prefix):
     plt.plot(y, data["sigma"])
     plt.ylabel("Sigma")
     plt.grid()
-    # plt.ylim(0.0, None)
+    plt.ylim(0.0, 16.0)
     plt.setp(plt.gca().get_xticklabels(), visible=False)
 
     # Skewness
@@ -45,7 +46,8 @@ def plot_moments(prefix):
     plt.grid()
 
     plt.xlabel("Position along slit, arcsec")
-    plt.savefig(prefix + "-plot.pdf")
+    plt.gcf().set_size_inches((4, 12))
+    plt.savefig(prefix + "-plot.pdf", bbox_inches='tight')
 
 
 if __name__ == "__main__":
@@ -57,5 +59,10 @@ if __name__ == "__main__":
         "stampname", type=str,
         help="""Prefix of stamp file (e.g., p84-O_I_5577)"""
     )
+    parser.add_argument(
+        "--suffix", type=str, default="nc",
+        help="""Suffix of stamp image"""
+    )
     cmd_args = parser.parse_args()
-    plot_moments("Stamps/{}-stamp-nc-moments".format(cmd_args.stampname))
+    plot_moments("Stamps/{}-stamp-{}-moments".format(
+        cmd_args.stampname, cmd_args.suffix))

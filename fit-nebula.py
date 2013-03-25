@@ -84,11 +84,12 @@ def save_data(data, prefix, method="json"):
         raise ValueError("Unrecognised method: " + method)
 
 
-def fit_nebula(stampname, vrange,
-               stampdir="Stamps", extra_suffix="", min_fraction=0.05):
+def calculate_moments_etc(stampname, vrange, stampdir="Stamps",
+                          extra_suffix="", min_fraction=0.05):
     # Read from the FITS file
-    stamp_prefix = os.path.join(
-        stampdir, stampname + "-stamp-nc" + extra_suffix)
+    stamp_prefix = os.path.join(stampdir, stampname + "-stamp-nc")
+    if extra_suffix:
+        stamp_prefix = '-'.join([stamp_prefix, extra_suffix])
     hdulist = pyfits.open(stamp_prefix + ".fits")
     # Assume that the first HDU in the file is the image
     image = hdulist[0].data
@@ -125,7 +126,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--extra-suffix", type=str, default="",
-        help="""Extra suffix for images (e.g., -dd)"""
+        help="""Extra suffix for images (e.g., dd)"""
     )
     parser.add_argument(
         "--min-fraction", type=float, default=0.05,
@@ -133,4 +134,4 @@ if __name__ == "__main__":
         pixel should contribute to the velocity moments"""
     )
     cmd_args = parser.parse_args()
-    fit_nebula(**vars(cmd_args))
+    calculate_moments_etc(**vars(cmd_args))
