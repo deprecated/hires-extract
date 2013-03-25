@@ -6,6 +6,7 @@ import json
 import numpy as np
 from scipy.stats import norm
 import lmfit
+import astropy.io.fits as pyfits
 
 
 def gauss(u, area=1.0, u0=0.0, sigma=1.0, du=None):
@@ -68,23 +69,30 @@ def init_single_component(params, ABC, i_coeffs, u_coeffs, w_coeffs):
     for k, coeff in enumerate(reversed(w_coeffs)):
         params.add("{}_w{}".format(ABC, k), value=coeff)
 
-if __name__ == "__main__":
-    params = lmfit.Parameters()
-    init_single_component(params, "A", i_coeffs=[0.0, 0.0, 1.0],
-                          u_coeffs=[0.0, 0.0, 25.0], w_coeffs=[0.0, 0.0, 5.0])
-    with open("gauss-test.json", "w") as f:
+
+def save_params(params, fn):
+    """Save fit parameters params to filename fn
+
+    """
+    with open(fn, "w") as f:
         json.dump({k: v.value for k, v in params.items()}, f, indent=4)
 
 
+if __name__ == "__main__":
+    # Test set-up and save of simple model parameters
+    params = lmfit.Parameters()
+    init_single_component(params, "A",
+                          i_coeffs=[-0.03, 0.0, 2.0],
+                          u_coeffs=[0.0, 0.0, 25.0],
+                          w_coeffs=[-0.03, 0.05, 5.0])
+    init_single_component(params, "B",
+                          i_coeffs=[0.0, 0.0, 1.0],
+                          u_coeffs=[0.001, -0.05, 0.0],
+                          w_coeffs=[0.0, 0.0, 2.0])
+    save_params(params, "gauss-test.json")
 
-
-
-
-
-
-
-
-
-
-
-
+    # Test with some sample data
+    U, Y = np.meshgrid(np.linspace(-10.0, 50.0, 31),
+                       np.linspace(-7.0, 7.0, 15))
+    im = model(U, Y, params, du=2.0)
+    pyfits.PrimaryHDU(im).writeto("gauss-test.fits", clobber=True)
