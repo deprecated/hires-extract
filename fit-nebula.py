@@ -6,12 +6,13 @@ import argparse
 import os
 import json
 import numpy as np
+from numpy.polynomial import Chebyshev as T
 import astropy.io.fits as pyfits
 import lmfit
 from doublet_utils import multiplet_moments, equivalent_doublet
 from pv_utils import make_grids
 from fit_utils import init_single_component, model_minus_data
-from fit_utils import model, save_params
+from fit_utils import model, save_params, YDOMAIN
 
 
 def find_doublet(moments):
@@ -121,11 +122,13 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
     print mask
     print y[mask]
     neb_coeffs = {"I1": None, "I2": None, "v1": None, "v2": None}
-    for linepar in neb_coeffs:
+    for linepar in neb_coeffs.keys():
         print linepar
         print np.array(mdata[linepar])[mask]
-        neb_coeffs[linepar] = np.polyfit(
-            y[mask], np.array(mdata[linepar])[mask], 2)
+        neb_coeffs[linepar] = T.fit(
+            y[mask], np.array(mdata[linepar])[mask], 2,
+            domain=YDOMAIN
+        )
 
     # Step 4: initialize 2D model with 2 Gaussian components
     #
