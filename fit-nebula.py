@@ -88,7 +88,8 @@ def save_data(data, prefix, method="json"):
 
 
 def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
-         extra_suffix="", min_fraction=0.05):
+         extra_suffix="", min_fraction=0.05,
+         ncomp=2, compA=None, compB=None, compC=None):
 
     # Step 1: Read data from the FITS file
     stamp_prefix = os.path.join(stampdir, stampname + "-stamp-nc")
@@ -131,16 +132,43 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
             domain=YDOMAIN
         )
 
-    # Step 4: initialize 2D model with 2 Gaussian components
+    # Step 4: initialize 2D model
     #
     params = lmfit.Parameters()
-    # Assume all components have a constant width to start with
-    init_single_component(params, "A", i_coeffs=neb_coeffs["I1"],
-                          u_coeffs=neb_coeffs["v1"],
-                          w_coeffs=[0.0, 0.0, 5.0])
-    init_single_component(params, "B", i_coeffs=neb_coeffs["I2"],
-                          u_coeffs=neb_coeffs["v2"],
-                          w_coeffs=[0.0, 0.0, 5.0])
+    #  If the component was not explicitly set on the command line,
+    #  then use the 2-delta solution for components A and B
+    if compA is None:
+        i_coeffs = neb_coeffs["I1"]
+        u_coeffs = neb_coeffs["v1"]
+        # Assume all components have a constant width to start with
+        w_coeffs = [5.0, 0.0, 0.0]
+    else:
+        i_coeffs = [compA[0], 0.0, 0.0]
+        u_coeffs = [compA[1], 0.0, 0.0]
+        w_coeffs = [compA[2], 0.0, 0.0]
+    init_single_component(params, "A", i_coeffs, u_coeffs, w_coeffs)
+
+    if ncomp > 1:
+        if compB is None:
+            i_coeffs = neb_coeffs["I2"]
+            u_coeffs = neb_coeffs["v2"]
+            w_coeffs = [5.0, 0.0, 0.0]
+        else:
+            i_coeffs = [compB[0], 0.0, 0.0]
+            u_coeffs = [compB[1], 0.0, 0.0]
+            w_coeffs = [compB[2], 0.0, 0.0]
+        init_single_component(params, "B", i_coeffs, u_coeffs, w_coeffs)
+
+    # The third component must have its parameters specified
+    # explicitly via the --compC option
+    if ncomp > 2:
+        i_coeffs = [compC[0], 0.0, 0.0]
+        u_coeffs = [compC[1], 0.0, 0.0]
+        w_coeffs = [compC[2], 0.0, 0.0]
+        init_single_component(params, "C", i_coeffs, u_coeffs, w_coeffs)
+
+    # Save initial guess at nebular model
+    imbg0 = model(U, Y, params)
 
     # Step 5: fit the model to the BG portion of the 2d data
     #
@@ -218,6 +246,22 @@ if __name__ == "__main__":
         "--min-fraction", type=float, default=0.05,
         help="""Minimum fraction of peak brightness in order that a
         pixel should contribute to the velocity moments"""
+    )
+    parser.add_argument(
+        "--ncomp", type=int, default=2,
+        help="""Number of nebular components to fit"""
+    )
+    parser.add_argument(
+        "--compA", type=float, nargs=3, default=None,
+        help="""Intensity, velocity, width of component A"""
+    )
+    parser.add_argument(
+        "--compB", type=float, nargs=3, default=None,
+        help="""Intensity, velocity, width of component B"""
+    )
+    parser.add_argument(
+        "--compC", type=float, nargs=3, default=None,
+        help="""Intensity, velocity, width of component C"""
     )
     cmd_args = parser.parse_args()
     main(**vars(cmd_args))
