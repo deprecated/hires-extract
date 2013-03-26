@@ -70,8 +70,11 @@ def init_single_component(params, ABC, i_coeffs, u_coeffs, w_coeffs):
         params.add("{}_i{}".format(ABC, k), value=coeff)
     for k, coeff in enumerate(u_coeffs):
         params.add("{}_u{}".format(ABC, k), value=coeff)
-    for k, coeff in enumerate(w_coeffs):
-        params.add("{}_w{}".format(ABC, k), value=coeff)
+    # Widths should only vary between about 2 and about 10
+    params.add(ABC+"_w0", value=w_coeffs[0], min=2.0, max=10.0)
+    # The variation should be even more restricted
+    for k, coeff in enumerate(w_coeffs[1:], start=1):
+        params.add("{}_w{}".format(ABC, k), value=coeff, min=-1.0, max=1.0)
 
 
 def save_params(params, fn):
