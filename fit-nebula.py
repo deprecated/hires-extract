@@ -98,8 +98,9 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
     # images to it later
     hdulist = pyfits.open(stamp_prefix + ".fits", mode="update")
     # Assume that the first HDU in the file is the image
+    hdr = hdulist[0].header
     image = hdulist[0].data
-    U, Y = make_grids(hdulist[0].header)
+    U, Y = make_grids(hdr)
 
     # Step 2: Calculate moments and 2-delta decomposition
     #
@@ -157,13 +158,28 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
 
     # Step 6: Save everything
     #
-    # Save the resulting BG-subtracted image in-place to the same FITS
-    # file as a separate image HDU and do the same with the model
-    # nebular BG image
     imbg = model(U, Y, params)
     improp = image - imbg
-    hdulist.append(pyfits.ImageHDU(improp, name="PROP"))
-    hdulist.append(pyfits.ImageHDU(imbg, name="NEB"))
+
+    # Save the resulting BG-subtracted image in-place to the same FITS
+    # file as a separate image HDU and do the same with the model
+    # nebular BG image and the original guess too.  In each case, try
+    # to save to an existing HDU with the right name first
+    try:
+        hdulist["PROP"].data = improp
+    except KeyError:
+        hdulist.append(pyfits.ImageHDU(improp, hdr, name="PROP"))
+
+    try:
+        hdulist["NEB"].data = imbg
+    except KeyError:
+        hdulist.append(pyfits.ImageHDU(imbg, hdr, name="NEB"))
+
+    try:
+        hdulist["NEB0"].data = improp
+    except KeyError:
+        hdulist.append(pyfits.ImageHDU(imbg0, hdr, name="NEB0"))
+
     hdulist.flush()
     # Save the fit parameters as well
     save_params(params, stamp_prefix + "-bgfit.json")
