@@ -7,6 +7,7 @@ import numpy as np
 from scipy.stats import norm
 import lmfit
 import astropy.io.fits as pyfits
+from numpy.polynomial import Chebyshev as T
 
 
 def gauss(u, area=1.0, u0=0.0, sigma=1.0, du=None):
@@ -30,26 +31,29 @@ def gauss(u, area=1.0, u0=0.0, sigma=1.0, du=None):
 
 MAXORDER = 2
 NPAR_PER_GAUSSIAN = (1 + MAXORDER)*3
+# Maximum extent of y-axis - mapped onto [-1, 1] for Chebyshev polynomials
+YDOMAIN = [-7.0, 7.0]
 
 
 def model(U, Y, params, du=None):
-    """Summation of various Gaussian components"""
+    """Summation of various Gaussian components with parameters that are
+    all Chebyshev polynomials of position
+
+    """
     ngauss = len(params)/NPAR_PER_GAUSSIAN
     total = np.zeros_like(U)
     for ABC in "ABCDEFGH"[:ngauss]:
-        i_coeffs = []
-        u_coeffs = []
-        w_coeffs = []
-        # we need the highest power first
-        for k in range(MAXORDER, -1, -1):
-            # Unpack each component from the model parameters
-            suff = "{}".format(k)
-            i_coeffs.append(params[ABC + "_i" + suff].value)
-            u_coeffs.append(params[ABC + "_u" + suff].value)
-            w_coeffs.append(params[ABC + "_w" + suff].value)
-        i_p = np.poly1d(i_coeffs)
-        u_p = np.poly1d(u_coeffs)
-        w_p = np.poly1d(w_coeffs)
+        # Unpack the Chebyshev polynomial coefficients
+        # Lowest order polynomial is first in the coefficient list
+        i_coeffs = [params["{}_i{}".format(ABC, k)].value
+                    for k in range(MAXORDER+1)]
+        u_coeffs = [params["{}_u{}".format(ABC, k)].value
+                    for k in range(MAXORDER+1)]
+        w_coeffs = [params["{}_w{}".format(ABC, k)].value
+                    for k in range(MAXORDER+1)]
+        i_p = T(i_coeffs, domain=YDOMAIN)
+        u_p = T(u_coeffs, domain=YDOMAIN)
+        w_p = T(w_coeffs, domain=YDOMAIN)
         total += gauss(U, i_p(Y), u_p(Y), w_p(Y), du)
     return total
 
@@ -62,11 +66,11 @@ def model_minus_data(params, u, y, data):
 def init_single_component(params, ABC, i_coeffs, u_coeffs, w_coeffs):
     # k=0 corresponds to the constant term
     # k=n corresponds to the y**n yerm
-    for k, coeff in enumerate(reversed(i_coeffs)):
+    for k, coeff in enumerate(i_coeffs):
         params.add("{}_i{}".format(ABC, k), value=coeff)
-    for k, coeff in enumerate(reversed(u_coeffs)):
+    for k, coeff in enumerate(u_coeffs):
         params.add("{}_u{}".format(ABC, k), value=coeff)
-    for k, coeff in enumerate(reversed(w_coeffs)):
+    for k, coeff in enumerate(w_coeffs):
         params.add("{}_w{}".format(ABC, k), value=coeff)
 
 
@@ -82,17 +86,17 @@ if __name__ == "__main__":
     # Test set-up and save of simple model parameters
     params = lmfit.Parameters()
     init_single_component(params, "A",
-                          i_coeffs=[-0.03, 0.0, 2.0],
-                          u_coeffs=[0.0, 0.0, 25.0],
-                          w_coeffs=[-0.03, 0.05, 5.0])
+                          i_coeffs=[2.0, 0.0, -1.5],
+                          u_coeffs=[25.0, 2.0, 1.0],
+                          w_coeffs=[5.0, 0.0, 2.0])
     init_single_component(params, "B",
-                          i_coeffs=[0.0, 0.0, 1.0],
-                          u_coeffs=[0.001, -0.05, 0.0],
-                          w_coeffs=[0.0, 0.0, 2.0])
+                          i_coeffs=[1.0, 0.0, 0.0],
+                          u_coeffs=[0.0, -0.5, 0.5],
+                          w_coeffs=[2.0, 0.0, 0.3])
     save_params(params, "gauss-test.json")
 
     # Test with some sample data
     U, Y = np.meshgrid(np.linspace(-10.0, 50.0, 31),
-                       np.linspace(-7.0, 7.0, 15))
+                       np.linspace(-7.0, 7.0, 29))
     im = model(U, Y, params, du=2.0)
     pyfits.PrimaryHDU(im).writeto("gauss-test.fits", clobber=True)
