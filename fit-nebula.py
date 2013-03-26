@@ -177,8 +177,9 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
     Ymask = ((Y > ylo[0]) & (Y < ylo[1])) | ((Y > yhi[0]) & (Y < yhi[1]))
     Umask = (U >= vrange[0]) & (U < vrange[1])
     bgmask = Ymask & Umask
+    du = hdr["CD1_1"]
     result = lmfit.minimize(model_minus_data, params,
-                            args=(U[bgmask], Y[bgmask], image[bgmask]))
+                            args=(U[bgmask], Y[bgmask], image[bgmask], du))
     print result.message
 
     # Print a verbose report of the error estimates and correlatons
