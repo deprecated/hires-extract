@@ -66,15 +66,28 @@ def model_minus_data(params, u, y, data, du=None):
 def init_single_component(params, ABC, i_coeffs, u_coeffs, w_coeffs):
     # k=0 corresponds to the constant term
     # k=n corresponds to the y**n yerm
+    eps = 1.e-8
     for k, coeff in enumerate(i_coeffs):
-        params.add("{}_i{}".format(ABC, k), value=coeff)
+        coeff_id = "{}_i{}".format(ABC, k)
+        if coeff is None:
+            params.add(coeff_id, value=eps, vary=False)
+        else:
+            params.add(coeff_id, value=coeff)
     for k, coeff in enumerate(u_coeffs):
-        params.add("{}_u{}".format(ABC, k), value=coeff)
-    # Widths should only vary between about 2 and about 10
-    params.add(ABC+"_w0", value=w_coeffs[0], min=1.5, max=10.0)
+        coeff_id = "{}_u{}".format(ABC, k)
+        if coeff is None:
+            params.add(coeff_id, value=eps, vary=False)
+        else:
+            params.add(coeff_id, value=coeff)
+    # Widths should only vary between about 2 and about 15
+    params.add(ABC+"_w0", value=w_coeffs[0], min=1.5, max=15.0)
     # The variation should be even more restricted
     for k, coeff in enumerate(w_coeffs[1:], start=1):
-        params.add("{}_w{}".format(ABC, k), value=coeff, min=-1.0, max=1.0)
+        coeff_id = "{}_w{}".format(ABC, k)
+        if coeff is None:
+            params.add(coeff_id, value=eps, vary=False)
+        else:
+            params.add(coeff_id, value=coeff, min=-1.0, max=1.0)
 
 
 def save_params(params, fn):

@@ -89,7 +89,7 @@ def save_data(data, prefix, method="json"):
 
 def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
          extra_suffix="", min_fraction=0.05,
-         ncomp=2, compA=None, compB=None, compC=None):
+         ncomp=2, compA=None, compB=None, compC=None, linear_components=""):
 
     # Step 1: Read data from the FITS file
     stamp_prefix = os.path.join(stampdir, stampname + "-stamp-nc")
@@ -146,6 +146,10 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
         i_coeffs = [compA[0], 0.0, 0.0]
         u_coeffs = [compA[1], 0.0, 0.0]
         w_coeffs = [compA[2], 0.0, 0.0]
+    if "A" in linear_components:
+        # None signifies that the coefficient is fixed at zero
+        u_coeffs[2] = None
+        w_coeffs[2] = None
     init_single_component(params, "A", i_coeffs, u_coeffs, w_coeffs)
 
     if ncomp > 1:
@@ -157,6 +161,9 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
             i_coeffs = [compB[0], 0.0, 0.0]
             u_coeffs = [compB[1], 0.0, 0.0]
             w_coeffs = [compB[2], 0.0, 0.0]
+        if "B" in linear_components:
+            u_coeffs[2] = None
+            w_coeffs[2] = None
         init_single_component(params, "B", i_coeffs, u_coeffs, w_coeffs)
 
     # The third component must have its parameters specified
@@ -165,9 +172,13 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
         i_coeffs = [compC[0], 0.0, 0.0]
         u_coeffs = [compC[1], 0.0, 0.0]
         w_coeffs = [compC[2], 0.0, 0.0]
+        if "C" in linear_components:
+            u_coeffs[2] = None
+            w_coeffs[2] = None
         init_single_component(params, "C", i_coeffs, u_coeffs, w_coeffs)
 
     # Save initial guess at nebular model
+    print params
     imbg0 = model(U, Y, params)
 
     # Step 5: fit the model to the BG portion of the 2d data
@@ -183,7 +194,10 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
     print result.message
 
     # Print a verbose report of the error estimates and correlatons
-    lmfit.report_errors(params)
+    try:
+        lmfit.report_errors(params)
+    except ZeroDivisionError:
+        print "Warning: Division by zero ocurred"
 
     # Step 6: Save everything
     #
@@ -263,6 +277,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--compC", type=float, nargs=3, default=None,
         help="""Intensity, velocity, width of component C"""
+    )
+    parser.add_argument(
+        "--linear-components", type=str, default="",
+        help="""Which components have non-linear terms
+        fixed at zero (e.g., AB)"""
     )
     cmd_args = parser.parse_args()
     main(**vars(cmd_args))
