@@ -89,7 +89,8 @@ def save_data(data, prefix, method="json"):
 
 def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
          extra_suffix="", min_fraction=0.05,
-         ncomp=2, compA=None, compB=None, compC=None, linear_components=""):
+         ncomp=2, compA=None, compB=None, compC=None,
+         linear_components="", linear_intensity_components=""):
 
     # Step 1: Read data from the FITS file
     stamp_prefix = os.path.join(stampdir, stampname + "-stamp-nc")
@@ -146,6 +147,8 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
         i_coeffs = [compA[0], 0.0, 0.0]
         u_coeffs = [compA[1], 0.0, 0.0]
         w_coeffs = [compA[2], 0.0, 0.0]
+    if "A" in linear_intensity_components:
+        i_coeffs[2] = None
     if "A" in linear_components:
         # None signifies that the coefficient is fixed at zero
         u_coeffs[2] = None
@@ -161,6 +164,8 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
             i_coeffs = [compB[0], 0.0, 0.0]
             u_coeffs = [compB[1], 0.0, 0.0]
             w_coeffs = [compB[2], 0.0, 0.0]
+        if "B" in linear_intensity_components:
+            i_coeffs[2] = None
         if "B" in linear_components:
             u_coeffs[2] = None
             w_coeffs[2] = None
@@ -172,6 +177,8 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
         i_coeffs = [compC[0], 0.0, 0.0]
         u_coeffs = [compC[1], 0.0, 0.0]
         w_coeffs = [compC[2], 0.0, 0.0]
+        if "C" in linear_intensity_components:
+            i_coeffs[2] = None
         if "C" in linear_components:
             u_coeffs[2] = None
             w_coeffs[2] = None
@@ -280,7 +287,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--linear-components", type=str, default="",
-        help="""Which components have non-linear terms
+        help="""Which components have non-linear velocity terms
+        fixed at zero (e.g., AB)"""
+    )
+    parser.add_argument(
+        "--linear-intensity-components", type=str, default="",
+        help="""Which components have non-linear intensity terms
         fixed at zero (e.g., AB)"""
     )
     cmd_args = parser.parse_args()
