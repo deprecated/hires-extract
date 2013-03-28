@@ -1,11 +1,14 @@
 import numpy as np
 import os.path
+import scipy.ndimage as ni
 import astropy.io.fits as pyfits
 import astropy.wcs as pywcs
 import pywcsgrid2
 import matplotlib.pyplot as plt
 
 KMS = 1000.0  # m/s
+NPCONT = 8  # Number of proplyd contours
+FWHM = 2.0*np.sqrt(2.0*np.log(2.0))  # Conversion RMS sigma -> FWHM
 
 
 def kms2xpix(hdr, u, y=0.0):
@@ -76,7 +79,8 @@ def doublet_stages(sname, linename, fancyname=None,
 
 
 def line_stages(sname, linename, fancyname=None,
-                stampdir="Stamps", drange=None, sky=0):
+                stampdir="Stamps", drange=None, sky=0,
+                pmax=None, psmooth=None):
     """
     Plot all the stages in the reduction of a normal line
     """
@@ -99,6 +103,15 @@ def line_stages(sname, linename, fancyname=None,
                        origin="low", cmap=plt.cm.gray_r,
                        aspect="auto",
                        interpolation="nearest")
+        if index == "PROP" and pmax is not None:
+            if psmooth is None:
+                pd = d
+            else:
+                pd = ni.gaussian_filter(d.astype("d"), psmooth/FWHM)
+            cs = ax.contour(pd, pmax*2**(-0.5*np.arange(NPCONT)),
+                            colors="r", alpha=0.5)
+            plt.clabel(cs, cs.levels[::2],
+                       inline=True, fmt="%.0d", inline_spacing=1, fontsize=6)
         ax.set_ticklabel2_type("arcsec", scale=1./3600, nbins=8)
         ax.set_ticklabel1_type("absval", scale=1./1000, nbins=7)
         ax.set_xlim(*kms2xpix(h, [-30.0, 60.0]))
@@ -132,19 +145,35 @@ def line_stages(sname, linename, fancyname=None,
 
 if __name__ == "__main__":
     # Example plots
-    doublet_stages("p84", "O_I_6046", "O I 6046", drange=[-3.0, 180.0])
-    doublet_stages("p84", "O_I_7002", "O I 7002", drange=[-3.0, 180.0])
-    # line_stages("p84", "N_I_5198", "[N I] 5198", drange=[-2.0, 140.0], sky=1)
-    # line_stages("p84", "O_I_6300", "[O I] 6300",
-    #             drange=[-10.0, 1600.0], sky=1)
-    # line_stages("p84", "C_II_6578", "C II 6578", drange=[-2.0, 150.0])
-    # line_stages("p84", "He_I_S_6678", "He I 6678", drange=[-5.0, 700.0])
-    # line_stages("p84", "O_I_5577", "[O I] 5577", drange=[-3.0, 250.0], sky=1)
-    # line_stages("p84", "Si_II_6371", "Si II 6371", drange=[-3.0, 120.0])
-    # line_stages("p84", "O_III_5007", "[O III] 5007", drange=[-10.0, 10000.0])
-    # line_stages("p84", "S_II_6731", "[S II] 6731", drange=[-10.0, 5000.0])
-    # line_stages("p84", "N_II_6548", "[N II] 6548", drange=[-10.0, 10000.0])
-    # line_stages("p84", "Cl_III_5538", "[Cl III] 5538", drange=[-2.0, 100.0])
-    # line_stages("p84", "Fe_III_4881", "[Fe III] 4881", drange=[-2.0, 60.0])
-    # line_stages("p84", "Fe_II_5262", "[Fe II] 5262", drange=[-2.0, 25.0])
-    # line_stages("p84", "S_III_6312", "[S III] 6312", drange=[-4.0, 330.0])
+    if True:
+        line_stages("p84", "Si_II_6371", "Si II 6371",
+                    drange=[-3.0, 120.0], pmax=80.0, psmooth=1.0)
+
+    if False:
+        # The reserve list
+        doublet_stages("p84", "O_I_6046", "O I 6046", drange=[-3.0, 180.0])
+        doublet_stages("p84", "O_I_7002", "O I 7002", drange=[-3.0, 180.0])
+        line_stages("p84", "N_I_5198", "[N I] 5198",
+                    drange=[-2.0, 140.0], pmax=160.0, sky=1)
+        line_stages("p84", "O_I_6300", "[O I] 6300",
+                    drange=[-10.0, 1600.0], sky=1, pmax=1600.0)
+        line_stages("p84", "C_II_6578", "C II 6578",
+                    drange=[-2.0, 150.0], pmax=80.0, psmooth=2.0)
+        line_stages("p84", "He_I_S_6678", "He I 6678",
+                    drange=[-5.0, 700.0], pmax=400.0)
+        line_stages("p84", "O_I_5577", "[O I] 5577",
+                    drange=[-3.0, 250.0], sky=1, pmax=160.0)
+        line_stages("p84", "O_III_5007", "[O III] 5007",
+                    drange=[-10.0, 10000.0], pmax=4000.0)
+        line_stages("p84", "S_II_6731", "[S II] 6731",
+                    drange=[-10.0, 5000.0], pmax=3200.0)
+        line_stages("p84", "S_III_6312", "[S III] 6312",
+                    drange=[-4.0, 330.0], pmax=320.0)
+        line_stages("p84", "N_II_6548", "[N II] 6548",
+                    drange=[-10.0, 10000.0], pmax=8000.0)
+        line_stages("p84", "Cl_III_5538", "[Cl III] 5538",
+                    drange=[-2.0, 100.0], pmax=40.0, psmooth=2.0)
+        line_stages("p84", "Fe_III_4881", "[Fe III] 4881",
+                    drange=[-2.0, 60.0], pmax=40.0, psmooth=2.0)
+        line_stages("p84", "Fe_II_5262", "[Fe II] 5262",
+                    drange=[-2.0, 25.0], pmax=40.0, psmooth=2.0)
