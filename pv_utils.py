@@ -4,7 +4,7 @@ General utility routines for dealing with position-velocity (PV) images
 
 import numpy as np
 from astropy import coordinates as coord
-from astropy import units as u
+from astropy import units as U
 from pyslalib.slalib import sla_dcs2c, sla_evp, sla_rverot, sla_obs
 
 
@@ -35,27 +35,27 @@ def rvcorr(hdr):
     # http://star-www.rl.ac.uk/docs/sun67.htx/node230.html
 
     # Object coordinates
-    ra = coord.RA(hdr["RA"], u.hour)
-    dec = coord.Dec(hdr["DEC"], u.degree)
+    ra = coord.RA(hdr["RA"], U.hour)
+    dec = coord.Dec(hdr["DEC"], U.degree)
     # Modified Julian Date
     jdate = float(hdr["MJD"])
     # Sidereal time
-    st = coord.Angle((hdr["ST"]), u.hour)
-    
+    st = coord.Angle((hdr["ST"]), U.hour)
+
     # line-of-sight unit vector to astronomical object
     k_los = sla_dcs2c(ra.radians, dec.radians)
-    
+
     # Velocity and position of earth in barycentric and heliocentric frames
     # Units are AU and AU/s
     vel_bary, pos_bary, vel_hel, pos_hel = sla_evp(jdate, 2000.0)
-    
-    # Radial velocity correction (km/s) due to helio-geocentric transformation  
+
+    # Radial velocity correction (km/s) due to helio-geocentric transformation
     # Positive when earth is moving away from object
-    vcorr_hel = u.AU.to(u.km, -np.dot(vel_hel, k_los))
-    
+    vcorr_hel = U.AU.to(U.km, -np.dot(vel_hel, k_los))
+
     # Long/lat/altitude of observatory (radians, radians, meters)
     obs_id, obs_name, obs_long, obs_lat, obs_height = sla_obs(0, "KECK1")
-    
+
     # Radial velocity correction (km/s) due to geo-topocentric transformation
     # Positive when observatory is moving away from object
     vcorr_geo = sla_rverot(obs_lat, ra.radians, dec.radians, st.radians)

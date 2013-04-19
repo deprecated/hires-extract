@@ -32,7 +32,8 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--method", type=str, default="partition", choices=["partition", "moments"],
+        "--method", type=str, default="partition",
+        choices=["partition", "moments"],
         help="""Which method to use for reducing the multiplet to a doublet"""
     )
     cmd_args = parser.parse_args()
