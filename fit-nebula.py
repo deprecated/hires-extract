@@ -122,12 +122,8 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
     #
     # Mask in y that selects only BG positions
     mask = ((y > ylo[0]) & (y < ylo[1])) | ((y > yhi[0]) & (y < yhi[1]))
-    print mask
-    print y[mask]
     neb_coeffs = {"I1": None, "I2": None, "v1": None, "v2": None}
     for linepar in neb_coeffs.keys():
-        print linepar
-        print np.array(mdata[linepar])[mask]
         neb_coeffs[linepar] = T.fit(
             y[mask], np.array(mdata[linepar])[mask], 2,
             domain=YDOMAIN
@@ -185,7 +181,6 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
         init_single_component(params, "C", i_coeffs, u_coeffs, w_coeffs)
 
     # Save initial guess at nebular model
-    print params
     imbg0 = model(U, Y, params)
 
     # Step 5: fit the model to the BG portion of the 2d data
