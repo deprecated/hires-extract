@@ -8,7 +8,7 @@ import numpy as np
 DB_FILE_NAME = "quartz-database.json"
 
 
-def remove_overlap(specid, extractdir):
+def remove_overlap(specid, extractdir, suffix):
     """
     Loop through the orders, dealing with each one
     """
@@ -50,7 +50,7 @@ def remove_overlap(specid, extractdir):
     for iorder in orders:
         print "Processing ", iorder
         pars = quartz_solutions[iorder]
-        hdulist = pyfits.open(order_file(iorder))
+        hdulist = pyfits.open(order_file(iorder, suffix1=suffix))
         image = hdulist["SCI"].data
         ny, nx = image.shape
         y = np.arange(ny) + 1.0  # 1-based scale for FITS y-pixels
@@ -82,6 +82,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "specid", type=str,
+        help="""Prefix of original FITS spectrum file (e.g., p84)"""
+    )
+    parser.add_argument(
+        "--suffix", type=str, default="s",
         help="""Prefix of original FITS spectrum file (e.g., p84)"""
     )
     parser.add_argument(
