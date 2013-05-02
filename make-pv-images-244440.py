@@ -3,12 +3,14 @@ import image_utils
 p85fac = 500.0/600.0            # exposure time ratio p85/p84
 
 
-def line_stages_two_slit(id0, id1, drange, pmax, psmooth):
+def line_stages_two_slit(id0, id1, drange, pmax=None, psmooth=None,
+                         sky=0, doublet=False):
     image_utils.line_stages(
-        "p84", id0, id1, drange=drange, pmax=pmax, psmooth=psmooth)
+        "p84", id0, id1, drange=drange,
+        pmax=pmax, psmooth=psmooth, sky=sky, doublet=doublet)
     image_utils.line_stages(
         "p85", id0, id1, drange=[x*p85fac for x in drange],
-        pmax=pmax*p85fac, psmooth=2.0)
+        pmax=pmax*p85fac, psmooth=psmooth, sky=sky, doublet=doublet)
 
 
 line_stages_two_slit("Fe_II_5159", "[Fe II] 5159",
