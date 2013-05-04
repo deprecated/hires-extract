@@ -30,21 +30,33 @@ print "Average image ratio: mean, median = ", mean, median
 
 every = 1
 x = image2.ravel()
-y = ratio.ravel()
+y = ratio.ravel()/median
+xmin, xmax = 0.0, 21500.0
+ymin, ymax = 1 - 0.03, 1 + 0.03
 plt.plot(x[::every], y[::every], '.', alpha=0.003)
-plt.plot([0.0, 25000.0], [median, median])
-xmin, xmax = 0.0, 25000.0
-ymin, ymax = median*(1-0.03), median*(1+0.03)
+plt.plot([xmin, xmax], [1.0, 1.0])
 plt.xlim(xmin, xmax)
 plt.ylim(ymin, ymax)
 plt.savefig("measure-noise.png")
 
 H, xedges, yedges = np.histogram2d(
-    x, y, bins=50, range=[[xmin, xmax], [ymin, ymax]], normed=True)
+    x, y, bins=100, range=[[xmin, xmax], [ymin, ymax]], normed=True)
+# Normalize to the sum for each x-value
+H /= H.sum(axis=1)[:, None]
+
+# Make a 2d grid of pixel center x, y-values for the histogram array
+ygrid = 0.5*(yedges[:-1] + yedges[1:])
+xgrid = 0.5*(xedges[:-1] + xedges[1:])
+Ygrid, Xgrid = np.meshgrid(ygrid, xgrid)
+
+# H is already normalized so that integral along y-axis is unity
+Hmean = np.sum(Ygrid*H, axis=1)
+
 plt.clf()
 plt.imshow(H.T, extent=[xmin, xmax, ymin, ymax],
            cmap=plt.cm.gray_r,
            origin="low", aspect="auto", interpolation="nearest")
+plt.plot(xgrid, Hmean)
 plt.xlim(xmin, xmax)
 plt.ylim(ymin, ymax)
 plt.savefig("measure-noise2.png")
