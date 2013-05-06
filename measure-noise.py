@@ -18,7 +18,8 @@ def flat_image(specid="q69", folder="Keck1"):
     print bzero, bscale
     return (hdu.data - bzero)/bscale
 
-GAIN = 2.09
+# GAIN = 2.38
+GAIN = 4.5
 
 image1 = flat_image("q69")
 image2 = flat_image("q110")
@@ -32,7 +33,7 @@ every = 1
 x = image2.ravel()
 y = ratio.ravel()/median
 xmin, xmax = 0.0, 21500.0
-ymin, ymax = 1 - 0.03, 1 + 0.03
+ymin, ymax = 1 - 0.05, 1 + 0.05
 plt.plot(x[::every], y[::every], '.', alpha=0.003)
 plt.plot([xmin, xmax], [1.0, 1.0])
 plt.xlim(xmin, xmax)
@@ -51,14 +52,28 @@ Ygrid, Xgrid = np.meshgrid(ygrid, xgrid)
 
 # H is already normalized so that integral along y-axis is unity
 Hmean = np.sum(Ygrid*H, axis=1)
+dY = Ygrid - Hmean[:, None]
+Hsig_obs = np.sqrt(np.sum((dY**2)*H, axis=1))
+
+# Assuming we know the gain, then we can predict the std of the ratio
+# image as a function of brightness
+
+Hsig_theory = np.sqrt((1.0 + median)/(xgrid*GAIN))
 
 plt.clf()
 plt.imshow(H.T, extent=[xmin, xmax, ymin, ymax],
            cmap=plt.cm.gray_r,
            origin="low", aspect="auto", interpolation="nearest")
-plt.plot(xgrid, Hmean)
+plt.plot(xgrid, Hmean, label="Mean")
+plt.plot(xgrid, Hmean + Hsig_theory, '--b', label="Theoretical sigma")
+plt.plot(xgrid, Hmean - Hsig_theory, '--b')
+plt.plot(xgrid, Hmean + Hsig_obs, '--r', label="Observed sigma")
+plt.plot(xgrid, Hmean - Hsig_obs, '--r')
 plt.xlim(xmin, xmax)
 plt.ylim(ymin, ymax)
+plt.xlabel("Brightness of Flat 1")
+plt.ylabel("Ratio (Flat 1/Flat 2) / <(Flat 1/Flat 2)>")
+plt.legend()
 plt.savefig("measure-noise2.png")
 
 sys.exit()
