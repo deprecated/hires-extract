@@ -19,7 +19,7 @@ def flat_image(specid="q69", folder="Keck1"):
     return (hdu.data - bzero)/bscale
 
 # GAIN = 2.38
-GAIN = 4.5
+GAIN = 4.4
 
 image1 = flat_image("q69")
 image2 = flat_image("q110")
@@ -41,7 +41,7 @@ plt.ylim(ymin, ymax)
 plt.savefig("measure-noise.png")
 
 H, xedges, yedges = np.histogram2d(
-    x, y, bins=100, range=[[xmin, xmax], [ymin, ymax]], normed=True)
+    x, y, bins=200, range=[[xmin, xmax], [ymin, ymax]], normed=True)
 # Normalize to the sum for each x-value
 H /= H.sum(axis=1)[:, None]
 
@@ -65,15 +65,18 @@ plt.imshow(H.T, extent=[xmin, xmax, ymin, ymax],
            cmap=plt.cm.gray_r,
            origin="low", aspect="auto", interpolation="nearest")
 plt.plot(xgrid, Hmean, label="Mean")
-plt.plot(xgrid, Hmean + Hsig_theory, '--b', label="Theoretical sigma")
+plt.plot(xgrid, Hmean + Hsig_theory, '--b', 
+         label="Theoretical sigma, gain = {:.1f}".format(GAIN))
 plt.plot(xgrid, Hmean - Hsig_theory, '--b')
-plt.plot(xgrid, Hmean + Hsig_obs, '--r', label="Observed sigma")
+plt.plot(xgrid, Hmean + Hsig_obs, '--r',
+         label="Observed sigma")
 plt.plot(xgrid, Hmean - Hsig_obs, '--r')
 plt.xlim(xmin, xmax)
 plt.ylim(ymin, ymax)
 plt.xlabel("Brightness of Flat 1")
 plt.ylabel("Ratio (Flat 1/Flat 2) / <(Flat 1/Flat 2)>")
-plt.legend()
+plt.title("Empirical determination of gain from ratio of two flats")
+plt.legend(loc="lower right", fontsize="small")
 plt.savefig("measure-noise2.png")
 
 sys.exit()
