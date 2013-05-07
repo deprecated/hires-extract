@@ -3,9 +3,9 @@ Measure noise in the flat field images, and plot noise against signal level
 """
 import astropy.io.fits as pyfits
 import os
-import sys
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.special as sp
 
 # GAIN = 2.38
 
@@ -22,8 +22,48 @@ def flat_image(specid="q69", folder="Keck1", dark=5.5):
     return (hdu.data - bzero)/bscale - dark
 
 
+def robust_statistics(x, y, xedges):
+    """Calculate robust estimates of location and scale of a distribution
+
+    Returns a vector of length len(xedges)-1 
+
+    Returns (loc, scale) of y, binned by x according to xedges
+
+    loc is the "average" value, estimated from the trimean
+
+    scale is the width of the distribution, estimated from the
+    interquartile range (IQR) and rescaled to be equal to the standard
+    deviation, sigma, for a Gaussian distribution
+
+    The IQR and trimean are much less affected by outliers and
+    power-law wings than are the regular mean and sigma
+
+    """
+    # Interquartile range in units of std for Gaussian profile
+    iqr_over_sigma = 2.0*np.sqrt(2.0)*sp.erfinv(0.5)
+    trimean, iqr = [], []
+    # Loop over bins in x
+    for x1, x2 in zip(xedges[:-1], xedges[1:]):
+        # Construct a mask that selects this bin
+        m = (x >= x1) & (x < x2)
+        # Find the 1st, 2nd, 3rd quartiles
+        q1 = np.percentile(y[m], 25.0)
+        q2 = np.percentile(y[m], 50.0)
+        q3 = np.percentile(y[m], 75.0)
+        # Trimean is weighted average of the median and the two
+        # quartiles (http://en.wikipedia.org/wiki/Trimean)
+        trimean.append(0.25*(q1 + 2*q2 + q3))
+        # Interquartile range is difference between quartiles
+        iqr.append(q3 - q1) 
+    # Convert lists to numpy arrays before returning
+    loc = np.array(trimean)
+    scale = np.array(iqr)/iqr_over_sigma
+    return loc, scale 
+
+
 def plot_statistics(file1="q69", file2="q110",
-                    gain=4.4, dy=0.05, xmax=None, bins=200):
+                    gain=4.4, dy=0.05, xmax=None, bins=200, robust=False):
+
     """Plot noise statistics from ratio of two images
     
     The two images should be as close to identical as possible (e.g.,
@@ -32,8 +72,17 @@ def plot_statistics(file1="q69", file2="q110",
     exposure times.
 
     """
-    image1 = flat_image(file1)
-    image2 = flat_image(file2)
+    if "/" in file1:
+        folder, file1 = file1.split("/")
+    else:
+        folder = "Keck1"
+    image1 = flat_image(file1, folder=folder)
+
+    if "/" in file2:
+        folder, file2 = file2.split("/")
+    else:
+        folder = "Keck1"
+    image2 = flat_image(file2, folder=folder)
 
     ratio = image2/image1
 
@@ -71,10 +120,14 @@ def plot_statistics(file1="q69", file2="q110",
     xgrid = 0.5*(xedges[:-1] + xedges[1:])
     Ygrid, Xgrid = np.meshgrid(ygrid, xgrid)
 
-    # H is already normalized so that integral along y-axis is unity
-    Hmean = np.sum(Ygrid*H, axis=1)
-    dY = Ygrid - Hmean[:, None]
-    Hsig_obs = np.sqrt(np.sum((dY**2)*H, axis=1))
+    if robust:
+        m = (x >= xmin) & (x <= xmax) & (y >= ymin) & (y <= ymax)
+        Hmean, Hsig_obs = robust_statistics(x[m], y[m], xedges)
+    else:
+        # H is already normalized so that integral along y-axis is unity
+        Hmean = np.sum(Ygrid*H, axis=1)
+        dY = Ygrid - Hmean[:, None]
+        Hsig_obs = np.sqrt(np.sum((dY**2)*H, axis=1))
 
     # Assuming we know the gain, then we can predict the std of the ratio
     # image as a function of brightness
@@ -82,7 +135,7 @@ def plot_statistics(file1="q69", file2="q110",
     Hsig_theory = np.sqrt((1.0 + R0)/(xgrid*gain))
 
     plt.clf()
-    np.set_printoptions(precision=4)
+    np.set_printoptions(precision=6)
     print H.T[::20, ::20]
     print xmin, xmax, ymin, ymax
     plt.imshow(H.T, extent=[xmin, xmax, ymin, ymax],
@@ -109,9 +162,29 @@ def plot_statistics(file1="q69", file2="q110",
 
 
 if __name__ == "__main__":
-    plot_statistics("q69", "q110", xmax=21500.0, dy=0.5)
-    plot_statistics("p83", "p84", xmax=3000.0,
-                    dy=0.5, bins=50, gain=2.4)
+    # plot_statistics("q69", "q110", xmax=21500.0,
+    #                 dy=0.2, bins=200, robust=True)
+    # plot_statistics("p83", "p84", xmax=3000.0,
+    #                 dy=0.4, bins=50, gain=2.4, robust=True)
+
+    # 182-413
+    plot_statistics("p78", "p77", xmax=1500.0,
+                    dy=0.4, bins=50, gain=2.4, robust=True)
+    plot_statistics("p86", "p87", xmax=1500.0,
+                    dy=0.4, bins=50, gain=2.4, robust=True)
+
+    # # 170-337 - doesn't work
+    # plot_statistics("p71", "p72", xmax=3000.0,
+    #                 dy=1.0, bins=50, gain=2.4, robust=True)
+
+
+    #
+    # Technique does not work with images from different nights - not similar enough
+    #
+    # plot_statistics("Keck2/p59", "p75", xmax=3000.0,
+    #                 dy=1.0, bins=50, gain=2.4, robust=True)
+    # plot_statistics("Keck2/p64", "p85", xmax=3000.0,
+    #                 dy=1.0, bins=50, gain=2.4, robust=True)
 
 
 
