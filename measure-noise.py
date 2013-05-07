@@ -10,8 +10,10 @@ import scipy.special as sp
 # GAIN = 2.38
 
 
-def flat_image(specid="q69", folder="Keck1", dark=5.5):
+def flat_image(specid="q69", folder="Keck1", dark=5.5, full=False):
     """Return bias-subtracted original image
+
+    Optionally, also return exposure time is full=True
     """
     hdu, = pyfits.open(
         os.path.join(folder, specid + ".fits")
@@ -19,7 +21,12 @@ def flat_image(specid="q69", folder="Keck1", dark=5.5):
     bzero = hdu.header.get("BZERO", 0.0)
     bscale = hdu.header.get("BSCALE", 1.0)
     print bzero, bscale
-    return (hdu.data - bzero)/bscale - dark
+    scaled_data = (hdu.data - bzero)/bscale - dark
+    if full:
+        exposure_time = hdu.header.get("EXPOSURE", 0.0)
+        return scaled_data, exposure_time
+    else:
+        return scaled_data
 
 
 def robust_statistics(x, y, xedges):
@@ -76,35 +83,42 @@ def plot_statistics(file1="q69", file2="q110",
         folder, file1 = file1.split("/")
     else:
         folder = "Keck1"
-    image1 = flat_image(file1, folder=folder)
+    image1, texp1 = flat_image(file1, folder=folder, full=True)
 
     if "/" in file2:
         folder, file2 = file2.split("/")
     else:
         folder = "Keck1"
-    image2 = flat_image(file2, folder=folder)
+    image2, texp2 = flat_image(file2, folder=folder, full=True)
 
     ratio = image2/image1
+    R0 = texp2/texp1            # Ratio of exposure times
 
     mean, median = ratio.mean(), np.median(ratio)
     print "Average image ratio: mean, median = ", mean, median
+    print "Exposure time ratio: ", R0
 
-    R0 = median                 # Guess for ratio of exposure times
-
-    every = 1
+    # Flattened versions of the data to analyse: 
+    #
+    # x-axis is the brightness of the longer exposure image
     x = image2.ravel()
+    # y-axis is the ratio of the two images divided by the ratio of
+    # exposure times
     y = ratio.ravel()/R0
 
     xmin = 0.0
     if xmax is None:
         xmax = image2.max()
     ymin, ymax = 1 - dy, 1 + dy
-    plt.clf()
-    plt.plot(x[::every], y[::every], '.', alpha=0.003)
-    plt.plot([xmin, xmax], [1.0, 1.0])
-    plt.xlim(xmin, xmax)
-    plt.ylim(ymin, ymax)
-    plt.savefig("measure-noise.png")
+
+    # Old plot that no longer is needed
+    # every = 1
+    # plt.clf()
+    # plt.plot(x[::every], y[::every], '.', alpha=0.003)
+    # plt.plot([xmin, xmax], [1.0, 1.0])
+    # plt.xlim(xmin, xmax)
+    # plt.ylim(ymin, ymax)
+    # plt.savefig("measure-noise.png")
 
     H, xedges, yedges = np.histogram2d(
         x, y, bins=bins, range=[[xmin, xmax], [ymin, ymax]],
