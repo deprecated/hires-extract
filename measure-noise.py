@@ -57,13 +57,14 @@ def robust_statistics(x, y, xedges):
         q1 = np.percentile(y[m], 25.0)
         q2 = np.percentile(y[m], 50.0)
         q3 = np.percentile(y[m], 75.0)
-        # Trimean is weighted average of the median and the two
-        # quartiles (http://en.wikipedia.org/wiki/Trimean)
+        # The trimean is the weighted average of the median and the
+        # two quartiles (http://en.wikipedia.org/wiki/Trimean)
         trimean.append(0.25*(q1 + 2*q2 + q3))
-        # Interquartile range is difference between quartiles
+        # The interquartile range is the difference between quartiles
         iqr.append(q3 - q1) 
     # Convert lists to numpy arrays before returning
     loc = np.array(trimean)
+    # Put scale in units of Gaussian standard deviation
     scale = np.array(iqr)/iqr_over_sigma
     return loc, scale 
 
@@ -146,12 +147,18 @@ def plot_statistics(file1="q69", file2="q110",
     # Assuming we know the gain, then we can predict the std of the ratio
     # image as a function of brightness
 
-    Hsig_theory = np.sqrt((1.0 + R0)/(xgrid*gain))
+    readout_noise_electrons = 5.0
+    Hsig_theory = np.sqrt(
+        (1.0 + R0)/(xgrid*gain) + 
+        (1.0 + R0**2)*(readout_noise_electrons**2)/(xgrid*gain)**2
+    )
 
-    plt.clf()
     np.set_printoptions(precision=6)
     print H.T[::20, ::20]
     print xmin, xmax, ymin, ymax
+
+    # Make a graph of the 2d histogram and the fits
+    plt.clf()
     plt.imshow(H.T, extent=[xmin, xmax, ymin, ymax],
                cmap=plt.cm.gray_r,
                origin="low", aspect="auto", interpolation="nearest")
@@ -167,19 +174,36 @@ def plot_statistics(file1="q69", file2="q110",
     plt.xlabel("Brightness of {}".format(file2))
     plt.ylabel("Ratio ({1}/{0}) / {2:.2f}".format(file1, file2, R0))
     plt.title(
+
         "Empirical determination of gain from ratio {1}/{0}".format(
             file1, file2))
     plt.legend(loc="lower right", fontsize="small")
     plt.savefig("measure-noise-{}-{}.png".format(file1, file2), 
                 dpi=150)
 
-
+    # Make another graph of sigma against sqrt(1/brightness)
+    plt.clf()
+    plt.plot(1/np.sqrt(xgrid), Hsig_obs, "o", label="Observed")
+    for factor in 0.5, 1.0, 1.5:
+        plt.loglog(1/np.sqrt(xgrid), Hsig_theory/np.sqrt(factor), "-",
+                 label="Gain = {:.1f}".format(gain*factor))
+    plt.xlabel("1 / sqrt[ N({}) ]".format(file2))
+    plt.ylabel("Standard deviation of N({})/N({})".format(file2, file1))
+    plt.xlim(0.003, 1.0)
+    plt.ylim(0.003, 1.0)
+    plt.legend(loc="lower right", fontsize="small")
+    plt.savefig("measure-gain-{}-{}.png".format(file1, file2), 
+                dpi=150)
+    
 
 if __name__ == "__main__":
-    # plot_statistics("q69", "q110", xmax=21500.0,
-    #                 dy=0.2, bins=200, robust=True)
-    # plot_statistics("p83", "p84", xmax=3000.0,
-    #                 dy=0.4, bins=50, gain=2.4, robust=True)
+    # Flat fields
+    plot_statistics("q69", "q110", xmax=21500.0,
+                    dy=0.2, bins=200, robust=True)
+
+    # 244-440
+    plot_statistics("p83", "p84", xmax=3000.0,
+                    dy=0.4, bins=50, gain=2.4, robust=True)
 
     # 182-413
     plot_statistics("p78", "p77", xmax=1500.0,
@@ -187,16 +211,20 @@ if __name__ == "__main__":
     plot_statistics("p86", "p87", xmax=1500.0,
                     dy=0.4, bins=50, gain=2.4, robust=True)
 
-    # # 170-337 - doesn't work
+    # 170-337 - doesn't work at all (as in: crashes)
     # plot_statistics("p71", "p72", xmax=3000.0,
     #                 dy=1.0, bins=50, gain=2.4, robust=True)
 
 
     #
-    # Technique does not work with images from different nights - not similar enough
+    # The technique does not work very well with images from different
+    # nights - not similar enough
     #
-    # plot_statistics("Keck2/p59", "p75", xmax=3000.0,
-    #                 dy=1.0, bins=50, gain=2.4, robust=True)
+    
+    # 177-341 - different nights - makes two strands
+    plot_statistics("Keck2/p59", "p75", xmax=3000.0,
+                    dy=1.0, bins=50, gain=2.4, robust=True)
+
     # plot_statistics("Keck2/p64", "p85", xmax=3000.0,
     #                 dy=1.0, bins=50, gain=2.4, robust=True)
 
