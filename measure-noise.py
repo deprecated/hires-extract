@@ -29,14 +29,38 @@ def flat_image(specid="q69", folder="Keck1", dark=5.5, full=False):
         return scaled_data
 
 
+def fsigma(N1, M=1.0, delta0=0.0, R0=1.0):
+    """Calculate Poisson and readout noise contributions to sigma(R)/R
+
+    Where R = N1/N2 is the ratio of two "matched" images (N1, N2) and
+    sigma(R) is the standard deviation of R.
+
+    The parameters are ADU gain, M (e-/DN), RMS readout noise, delta0
+    (e-), and the expectation value of R, R0 (calculated as ratio of
+    exposure times).  By "matched", I mean that the images should be
+    close to identical to within a constant factor, apart from the
+    noise, obviously.
+
+    Note that this function uses the notation that I use in the docs
+    (see keck-revisited.org), unlike the rest of this file.  In
+    particular, N1 (brightness of the longer exposure) actually
+    corresponds to file2 and image2 in plot_statistics()
+
+    """
+    return np.sqrt(
+        (1.0 + R0)/(N1*M) + 
+        (1.0 + R0**2)*(delta0**2)/(N1*M)**2
+    )
+
+
 def robust_statistics(x, y, xedges):
     """Calculate robust estimates of location and scale of a distribution
 
-    Returns a vector of length len(xedges)-1 
-
     Returns (loc, scale) of y, binned by x according to xedges
 
-    loc is the "average" value, estimated from the trimean
+    Returns vectors of length len(xedges)-1 
+
+    loc is the "average" value, estimated as the trimean
 
     scale is the width of the distribution, estimated from the
     interquartile range (IQR) and rescaled to be equal to the standard
@@ -70,7 +94,7 @@ def robust_statistics(x, y, xedges):
 
 
 def plot_statistics(file1="q69", file2="q110",
-                    gain=4.4, dy=0.05, xmax=None, bins=200, robust=False):
+                    gain=4.4, dy=0.05, xmax=None, bins=200, robust=True, max_deviation=5.0):
 
     """Plot noise statistics from ratio of two images
     
@@ -102,24 +126,17 @@ def plot_statistics(file1="q69", file2="q110",
     # Flattened versions of the data to analyse: 
     #
     # x-axis is the brightness of the longer exposure image
-    x = image2.ravel()
+    x = np.log10(image2.ravel())
     # y-axis is the ratio of the two images divided by the ratio of
     # exposure times
     y = ratio.ravel()/R0
 
-    xmin = 0.0
+    xmin = 1.5
     if xmax is None:
-        xmax = image2.max()
+        xmax = x.max()
+    else:
+        xmax = np.log10(xmax)
     ymin, ymax = 1 - dy, 1 + dy
-
-    # Old plot that no longer is needed
-    # every = 1
-    # plt.clf()
-    # plt.plot(x[::every], y[::every], '.', alpha=0.003)
-    # plt.plot([xmin, xmax], [1.0, 1.0])
-    # plt.xlim(xmin, xmax)
-    # plt.ylim(ymin, ymax)
-    # plt.savefig("measure-noise.png")
 
     H, xedges, yedges = np.histogram2d(
         x, y, bins=bins, range=[[xmin, xmax], [ymin, ymax]],
@@ -135,8 +152,19 @@ def plot_statistics(file1="q69", file2="q110",
     xgrid = 0.5*(xedges[:-1] + xedges[1:])
     Ygrid, Xgrid = np.meshgrid(ygrid, xgrid)
 
+    # Assuming we know the gain, then we can predict the std of the ratio
+    # image as a function of brightness
+
+    readout = 5.0
+    Hsig_theory = fsigma(10**xgrid, M=gain, delta0=readout, R0=R0)
+
     if robust:
+        # Restrict calculation to the graph viewport
         m = (x >= xmin) & (x <= xmax) & (y >= ymin) & (y <= ymax)
+        print y.shape, m.shape, m.sum()
+        # Reject any points that are more than 5 sig away from the nominal R0
+        m = m & (np.abs(y - 1.0) < max_deviation*fsigma(10**x, gain, readout, R0))
+        print y.shape, m.shape, m.sum()
         Hmean, Hsig_obs = robust_statistics(x[m], y[m], xedges)
     else:
         # H is already normalized so that integral along y-axis is unity
@@ -144,14 +172,6 @@ def plot_statistics(file1="q69", file2="q110",
         dY = Ygrid - Hmean[:, None]
         Hsig_obs = np.sqrt(np.sum((dY**2)*H, axis=1))
 
-    # Assuming we know the gain, then we can predict the std of the ratio
-    # image as a function of brightness
-
-    readout_noise_electrons = 5.0
-    Hsig_theory = np.sqrt(
-        (1.0 + R0)/(xgrid*gain) + 
-        (1.0 + R0**2)*(readout_noise_electrons**2)/(xgrid*gain)**2
-    )
 
     np.set_printoptions(precision=6)
     print H.T[::20, ::20]
@@ -171,7 +191,7 @@ def plot_statistics(file1="q69", file2="q110",
     plt.plot(xgrid, Hmean - Hsig_obs, '--r')
     plt.xlim(xmin, xmax)
     plt.ylim(ymin, ymax)
-    plt.xlabel("Brightness of {}".format(file2))
+    plt.xlabel("log_10(Brightness of {})".format(file2))
     plt.ylabel("Ratio ({1}/{0}) / {2:.2f}".format(file1, file2, R0))
     plt.title(
 
@@ -180,36 +200,41 @@ def plot_statistics(file1="q69", file2="q110",
     plt.legend(loc="lower right", fontsize="small")
     plt.savefig("measure-noise-{}-{}.png".format(file1, file2), 
                 dpi=150)
+    plt.savefig("measure-noise-{}-{}.pdf".format(file1, file2))
 
     # Make another graph of sigma against sqrt(1/brightness)
     plt.clf()
-    plt.plot(1/np.sqrt(xgrid), Hsig_obs, "o", label="Observed")
-    for factor in 0.5, 1.0, 1.5:
-        plt.loglog(1/np.sqrt(xgrid), Hsig_theory/np.sqrt(factor), "-",
-                 label="Gain = {:.1f}".format(gain*factor))
-    plt.xlabel("1 / sqrt[ N({}) ]".format(file2))
+    plt.plot(10**xgrid, Hsig_obs, "om", label="Observed", ms=10.0, alpha=0.5)
+    for gfac, rfac, style in (1.0/1.5, 1.0, "-r"), (1.0, 1.0, "-g"), (1.0, 0.6, ":g"), (1.5, 1.0, "-b"):
+        plt.loglog(10**xgrid, fsigma(10**xgrid, gain*gfac, readout*rfac, R0), style,
+                   label="Gain = {:.1f} e-/DN, readout = {:.1f} e-".format(
+                       gain*gfac, readout*rfac),
+                   lw=3, alpha=0.7
+        )
+    plt.xlabel("N({}), DN".format(file2))
     plt.ylabel("Standard deviation of N({})/N({})".format(file2, file1))
-    plt.xlim(0.003, 1.0)
-    plt.ylim(0.003, 1.0)
-    plt.legend(loc="lower right", fontsize="small")
+    plt.xlim(20.0, 3.e4)
+    plt.ylim(0.004, 0.5)
+    plt.legend(loc="lower left", fontsize="small")
     plt.savefig("measure-gain-{}-{}.png".format(file1, file2), 
                 dpi=150)
+    plt.savefig("measure-gain-{}-{}.pdf".format(file1, file2))
     
 
 if __name__ == "__main__":
     # Flat fields
     plot_statistics("q69", "q110", xmax=21500.0,
-                    dy=0.2, bins=200, robust=True)
+                    dy=1., bins=200, gain=6.0)
 
     # 244-440
-    plot_statistics("p83", "p84", xmax=3000.0,
-                    dy=0.4, bins=50, gain=2.4, robust=True)
+    plot_statistics("p83", "p84", xmax=5000.0,
+                    dy=1.0, bins=(100, 100), gain=3.5)
 
     # 182-413
-    plot_statistics("p78", "p77", xmax=1500.0,
-                    dy=0.4, bins=50, gain=2.4, robust=True)
-    plot_statistics("p86", "p87", xmax=1500.0,
-                    dy=0.4, bins=50, gain=2.4, robust=True)
+    plot_statistics("p78", "p77", xmax=5000.0,
+                    dy=1.0, bins=(100, 100), gain=3.5)
+    plot_statistics("p86", "p87", xmax=5000.0,
+                    dy=1.0, bins=(100, 100), gain=3.5)
 
     # 170-337 - doesn't work at all (as in: crashes)
     # plot_statistics("p71", "p72", xmax=3000.0,
@@ -223,31 +248,13 @@ if __name__ == "__main__":
     
     # 177-341 - different nights - makes two strands
     plot_statistics("Keck2/p59", "p75", xmax=3000.0,
-                    dy=1.0, bins=50, gain=2.4, robust=True)
+                    dy=1.0, bins=(100, 100), gain=3.5, max_deviation=3.0)
 
     # plot_statistics("Keck2/p64", "p85", xmax=3000.0,
     #                 dy=1.0, bins=50, gain=2.4, robust=True)
 
 
 
-# Old stuff
-# labels = []
-# for iorder in orders:
-#     image = pyfits.open(flat_order_file(iorder))["SCI"].data
-#     for ystart in ystarts:
-#         ywindow = slice(ystart, ystart+ychunksize, None)
-#         window = xwindow, ywindow
-#         bright.append(image[window].mean())
-#         sigma.append(image[window].std())
-#         labels.append(str(iorder))
-# plt.plot(bright, sigma, '.')
-# x = np.arange(0.0, 8000)
-# plt.plot(x, np.sqrt(x/GAIN))
-# # for x, y, label in zip(bright, sigma, labels):
-# #     plt.annotate(label, (x, y))
-# plt.xlim(0.0, 8000.0)
-# plt.ylim(0.0, 100.0)
-# plt.savefig("sigma-vs-signal.pdf")
 
 
 
