@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import numpy as np
 import astropy.io.fits as pyfits
 from doublet_utils import multiplet_moments, equivalent_doublet, \
     undoubletify, partition_doublet
@@ -43,8 +44,9 @@ if __name__ == "__main__":
     for lineid, data in all_data.items():
         prefix = get_prefix(cmd_args.specid, lineid, cmd_args.stampdir)
         hdulist = pyfits.open(prefix + ".fits")
-        image = hdulist[0].data
-        du = hdulist[0].header["CD1_1"]
+        image = hdulist["SCI"].data
+        variance = hdulist["SIGMA"].data**2
+        du = hdulist["SCI"].header["CD1_1"]
 
         weights = [A*(2*J + 1) for A, J in zip(data["A_ki"], data["J_k"])]
         wavs = data["Wavelength"]
@@ -57,8 +59,12 @@ if __name__ == "__main__":
             doublet = equivalent_doublet(1.0, 0.0, sigma,  moments["skewness"])
         elif cmd_args.method == "partition":
             doublet = partition_doublet(vels, weights)
-
-        image = undoubletify(image, doublet["a"], doublet["delta"]/du)
+        
+        newim, newvar = undoubletify(image, doublet["a"], doublet["delta"]/du, variance)
+        hdulist["SCI"].data = newim
+        hdulist["SIGMA"].data = np.sqrt(newvar)
         # Shift the velocity frame to be centered on the principal component
-        hdulist[0].header["CRVAL1"] -= doublet["x1"]
+        for hdu in hdulist:
+            if "CRVAL1" in hdu.header:
+                hdu.header["CRVAL1"] -= doublet["x1"]
         hdulist.writeto(prefix + "-dd.fits", clobber=True)

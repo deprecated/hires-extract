@@ -130,7 +130,7 @@ def partition_doublet(wavs, intensities):
         }
 
 
-def undoubletify(spectrum, a, x0):
+def undoubletify(spectrum, a, x0, variance):
     """Deconvolve a doublet line profile using repeated subtraction
     method
 
@@ -145,8 +145,10 @@ def undoubletify(spectrum, a, x0):
                           x0 - Separation in pixels (or fraction) between the
                                two components.
 
+                    variance - Variance (sigma**2) of the spectrum.
+
     Returns:
-                 newspectrum - Deconvolved spectrum
+        (newspectrum, newvariance) - Deconvolved spectrum and updated variance
 
     """
 
@@ -175,12 +177,17 @@ def undoubletify(spectrum, a, x0):
     # shifted off the grid
     nterms = abs(int(nx/x0))
     print "Using ", nterms, " terms"
+    # Make sure that we have new copies of the arrays
+    newspectrum = np.zeros_like(spectrum)
+    newspectrum += spectrum
+    newvariance = np.zeros_like(variance)
+    newvariance += variance
     # Calculate the series
-    newspectrum = spectrum
     for n in 1 + np.arange(nterms):
         newspectrum += (-a)**n * shift_right(spectrum, n*x0)
+        newvariance += a**n * shift_right(variance, n*x0)
 
-    return newspectrum
+    return newspectrum, newvariance
 
 
 def pprint_dict(d):
