@@ -97,17 +97,25 @@ def extract_stamps(specid, extractdir, stampdir):
             print "**** Error....  couldn't solve linear  equation"
             print "**** Skipping " + lineid
             continue
-        hdustamp = pyfits.PrimaryHDU(imstamp)
-        hdustamp.header.update(
+        hduprim = pyfits.PrimaryHDU()
+        hdustamp = pyfits.ImageHDU(imstamp, name="SCI")
+        hdusig = pyfits.ImageHDU(inhdulist["SIGMA"].data[J1:J2, i1:i2], name="SIGMA")
+        # Mask is not yet present, but should be soon...
+        # hdumask = pyfits.ImageHDU(inhdulist["XXX"].data[J1:J2, i1:i2])
+        wcsdict = dict(
             CRPIX1=0.0, CRVAL1=b, CD1_1=m, CD1_2=0.0,
             CTYPE1="VELO", CUNIT1="km/s",
-            CRPIX2=0.5*(1 + J2 - J1), CRVAL2=0.0, CD2_1=0.0, CD2_2=PLATE_SCALE,
+            CRPIX2=0.5*(1 + J2 - J1), CRVAL2=0.0,
+            CD2_1=0.0, CD2_2=PLATE_SCALE,
             CTYPE2="PARAM", CUNIT2="arcsec",
         )
+        hdustamp.header.update(wcsdict)
+        hdusig.header.update(wcsdict)
+        hdulist = pyfits.HDUList([hduprim, hdustamp, hdusig])
         outfile = os.path.join(
             stampdir, "-".join([specid, sanitize(lineid), "stamp.fits"])
         )
-        hdustamp.writeto(outfile, clobber=True)
+        hdulist.writeto(outfile, clobber=True)
 
 
 if __name__ == "__main__":

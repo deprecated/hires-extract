@@ -19,9 +19,13 @@ def divide_by_flat(specid, quartzid, extractdir):
         print "Processing ", iorder
         hdulist = pyfits.open(order_file(iorder, specid))
         image = hdulist["SCI"].data
+        sigma = hdulist["SIGMA"].data
         flat_image = pyfits.open(order_file(iorder, quartzid))["SCI"].data
         flat_image = flat_image[13:49,:].mean(axis=0)
+        #  Make sure that the magnitude of the image is not changed too much
+        flat_image /= flat_image.mean() 
         image /= flat_image[None,:]
+        sigma /= flat_image[None,:]
         hdulist.writeto(order_file(iorder, specid, suffix1="f"), clobber=True)
 
 
