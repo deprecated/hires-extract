@@ -8,6 +8,7 @@ from scipy.stats import norm
 import lmfit
 import astropy.io.fits as pyfits
 from numpy.polynomial import Chebyshev as T
+import bottleneck as bn
 
 
 def gauss(u, area=1.0, u0=0.0, sigma=1.0, du=None):
@@ -122,14 +123,19 @@ def std_from_model_fuzzing(U, Y, params, du=None, nsamp=100):
     for i in range(nsamp):
         fuzzy_params = lmfit.Parameters()
         for name, param in params.items():
-            if param.stderr > 0.0:
+            if param.vary:
                 fuzzy_value = np.random.normal(param.value, param.stderr)
             else:
-                # probably a pegged parameter, which will have stderr=0
+                # pegged parameter does not vary
                 fuzzy_value = param.value
+            # Ensure we do not stray outside of the established bounds
+            if param.max:
+                fuzzy_value = min(fuzzy_value, param.max)
+            if param.min: 
+                fuzzy_value = max(fuzzy_value, param.min)
             fuzzy_params.add(name, value=fuzzy_value)
         model_stack[i, :, :] = model(U, Y, fuzzy_params, du)
-    return model_stack.std(axis=0)
+    return bn.nanstd(model_stack, axis=0)
 
 
 
