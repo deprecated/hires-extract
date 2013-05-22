@@ -63,6 +63,11 @@ def model_minus_data(params, u, y, data, du=None):
     return model(u, y, params, du) - data
 
 
+def model_minus_data_over_sigma(params, u, y, data, sigma, du=None):
+    """Another function to minimize"""
+    return (model(u, y, params, du) - data)/sigma
+
+
 def init_single_component(params, ABC, i_coeffs, u_coeffs, w_coeffs):
     # k=0 corresponds to the constant term
     # k=n corresponds to the y**n yerm

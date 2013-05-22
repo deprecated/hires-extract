@@ -11,7 +11,7 @@ import astropy.io.fits as pyfits
 import lmfit
 from doublet_utils import multiplet_moments, equivalent_doublet
 from pv_utils import make_grids
-from fit_utils import init_single_component, model_minus_data
+from fit_utils import init_single_component, model_minus_data_over_sigma
 from fit_utils import model, save_params, YDOMAIN
 
 
@@ -100,8 +100,11 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
     # images to it later
     hdulist = pyfits.open(stamp_prefix + ".fits", mode="update")
     # Assume that the first HDU in the file is the image
-    hdr = hdulist[0].header
-    image = hdulist[0].data
+    hdr = hdulist['SCI'].header
+    image = hdulist['SCI'].data
+    # stdev (uncertainty) of pixels
+    # - not to be confused with the sigma of the line profile
+    esig = hdulist['SIGMA'].data 
     U, Y = make_grids(hdr)
 
     # Step 2: Calculate moments and 2-delta decomposition
@@ -191,9 +194,13 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
     Umask = (U >= vrange[0]) & (U < vrange[1])
     bgmask = Ymask & Umask
     du = hdr["CD1_1"]
-    result = lmfit.minimize(model_minus_data, params,
-                            args=(U[bgmask], Y[bgmask], image[bgmask], du))
+    result = lmfit.minimize(model_minus_data_over_sigma, params,
+                            args=(U[bgmask], Y[bgmask], image[bgmask], esig[bgmask], du))
     print result.message
+    print
+    print "Reduced chi-squared of fit: ", result.redchi
+    for name, param in params.items():
+        print name, param.stderr
 
     # Print a verbose report of the error estimates and correlatons
     try:
