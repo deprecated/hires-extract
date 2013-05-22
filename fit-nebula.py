@@ -13,6 +13,7 @@ from doublet_utils import multiplet_moments, equivalent_doublet
 from pv_utils import make_grids
 from fit_utils import init_single_component, model_minus_data_over_sigma
 from fit_utils import model, save_params, YDOMAIN
+from fit_utils import std_from_model_fuzzing
 
 
 def find_doublet(moments):
@@ -90,7 +91,7 @@ def save_data(data, prefix, method="json"):
 def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
          extra_suffix="", min_fraction=0.05,
          ncomp=2, compA=None, compB=None, compC=None,
-         linear_components="", linear_intensity_components=""):
+         linear_components="", linear_intensity_components="", print_ci=False):
 
     # Step 1: Read data from the FITS file
     stamp_prefix = os.path.join(stampdir, stampname + "-stamp-nc")
@@ -202,16 +203,24 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
     for name, param in params.items():
         print name, param.stderr
 
+    if print_ci:
+        ci = lmfit.confidence.conf_interval(result)
+        lmfit.printfuncs.report_ci(ci)
+
     # Print a verbose report of the error estimates and correlatons
     try:
         lmfit.report_errors(params)
     except ZeroDivisionError:
         print "Warning: Division by zero ocurred"
 
-    # Step 6: Save everything
+    # Step 6: Calculate images
     #
     imbg = model(U, Y, params)
     improp = image - imbg
+    imsig = std_from_model_fuzzing(U, Y, params, du)
+
+    # Step 7: Save everything
+    #
 
     # Save the resulting BG-subtracted image in-place to the same FITS
     # file as a separate image HDU and do the same with the model
@@ -231,6 +240,11 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
         hdulist["NEB0"].data = improp
     except KeyError:
         hdulist.append(pyfits.ImageHDU(imbg0, hdr, name="NEB0"))
+
+    try:
+        hdulist["SIGNEB"].data = imsig
+    except KeyError:
+        hdulist.append(pyfits.ImageHDU(imsig, hdr, name="SIGNEB"))
 
     hdulist.flush()
     # Save the fit parameters as well
@@ -296,6 +310,11 @@ if __name__ == "__main__":
         "--linear-intensity-components", type=str, default="",
         help="""Which components have non-linear intensity terms
         fixed at zero (e.g., AB)"""
+    )
+    parser.add_argument(
+        "--print-ci", action="store_true",
+        help="""Calculate and print a report of the confidence interval on the
+        parameters.  WARNING: May be slow if there are many parameters"""
     )
     cmd_args = parser.parse_args()
     main(**vars(cmd_args))

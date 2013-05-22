@@ -103,6 +103,36 @@ def save_params(params, fn):
         json.dump({k: v.value for k, v in params.items()}, f, indent=4)
 
 
+
+def std_from_model_fuzzing(U, Y, params, du=None, nsamp=100):
+    """Estimate std of nebular pv image due to std of fit parameters
+
+    Uses a Monte Carlo simulation of nsamp realizations of the model,
+    with parameters drawn from Gaussian distributions around the
+    best-fit values, with widths equal to the reported stderror.
+
+    Currently does not attempt to make use of the correlations between
+    model parameters, which means we may overestimate the
+    uncertainties....
+
+    """
+    ny, nu = U.shape
+    model_stack = np.empty((nsamp, ny, nu))
+    # Fill in a stack of nebular models, all fuzzed around the best fit
+    for i in range(nsamp):
+        fuzzy_params = lmfit.Parameters()
+        for name, param in params.items():
+            if param.stderr > 0.0:
+                fuzzy_value = np.random.normal(param.value, param.stderr)
+            else:
+                # probably a pegged parameter, which will have stderr=0
+                fuzzy_value = param.value
+            fuzzy_params.add(name, value=fuzzy_value)
+        model_stack[i, :, :] = model(U, Y, fuzzy_params, du)
+    return model_stack.std(axis=0)
+
+
+
 if __name__ == "__main__":
     # Test set-up and save of simple model parameters
     params = lmfit.Parameters()
