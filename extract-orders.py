@@ -6,21 +6,22 @@ import scipy.ndimage as ndi
 import scipy.interpolate
 import skimage.morphology
 import os
+import bottleneck as bn
 
 INTERPOLATE = "linear"
 
 # Mapping between the boxes that we added by hand and
 # the labels of the contiguous patches
 box2label = {
-    "51": 24, "52": 23, "53": 22, "54": 21, "55": 20, "56": 19, "57": 18,
-    "58": 17, "59": 16, "60": 15, "61": 14, "62": 14, "63": 14, "64": 13,
-    "65": 12, "66": 11, "67": 10, "68": 9,  "69": 8,  "70": 7,  "71": 6,
-    "72": 5,  "73": 4,  "74": 3,  "75": 2,  "76": 1
+    51: 24, 52: 23, 53: 22, 54: 21, 55: 20, 56: 19, 57: 18,
+    58: 17, 59: 16, 60: 15, 61: 14, 62: 14, 63: 14, 64: 13,
+    65: 12, 66: 11, 67: 10, 68: 9,  69: 8,  70: 7,  71: 6,
+    72: 5,  73: 4,  74: 3,  75: 2,  76: 1
 }
 
 
-# Orders up to 72 are well-separated and work with both methods
-ordermax = 72
+# Orders up to 71 are well-separated and work with both methods
+ordermax = 71
 
 
 def shrink_box(r, h=8.0):
@@ -53,6 +54,7 @@ def parabolic_distorsion(iorder):
 
 
 def extract_orders(specfile, wavfile, regionfile, outdir,
+                   onlyorders=None, 
                    wavmin=1000.0, wavmax=10000.0):
     """
     Go through all the orders, extracting each one
@@ -98,6 +100,11 @@ def extract_orders(specfile, wavfile, regionfile, outdir,
         # and the same for the entire order (adding some padding)
         widemask = dilate_mask(widefilter.mask(wavhdu.data.shape), 3)
 
+        iorder = int(ordername.split()[-1])
+        if not (onlyorders is None or iorder in onlyorders):
+            # Option for skipping all but some orders
+            continue
+
         # First find wavelengths that ought to fall in the order
         orderwavs = wavhdu.data[ordermask & wavmask]
         if len(orderwavs):
@@ -108,8 +115,7 @@ def extract_orders(specfile, wavfile, regionfile, outdir,
 
         # Second, look at wavelengths in the contiguous wavelength box
         # that we found
-        label = box2label[ordername.split()[-1]]
-        iorder = int(ordername.split()[-1])
+        label = box2label[iorder]
         orderwavs = wavhdu.data[labels == label]
         if len(orderwavs):
             print "Label {}: {:.2f}-{:.2f}".format(
@@ -150,7 +156,7 @@ def extract_orders(specfile, wavfile, regionfile, outdir,
 
         # Use a single average wavelength for each column
         ny, nx = wavorder.shape
-        meanwav = np.sum(wavorder*cm, axis=0) / cm.sum(axis=0)
+        meanwav = bn.nansum(wavorder*cm, axis=0) / bn.nansum(cm, axis=0)
         meanwav = np.vstack([meanwav]*ny)
 
         #
@@ -237,6 +243,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--outdir", "-o", type=str, default="Extract",
         help="""Directory for placing the results"""
+    )
+    parser.add_argument(
+        "--onlyorders", type=int, metavar="N", nargs="*", default=None,
+        help="""If set, only process these particular orders.  Default is to
+        process all the orders."""
     )
 
     cmd_args = parser.parse_args()
