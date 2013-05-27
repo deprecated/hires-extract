@@ -91,7 +91,10 @@ def save_data(data, prefix, method="json"):
 def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
          extra_suffix="", min_fraction=0.05,
          ncomp=2, compA=None, compB=None, compC=None,
-         linear_components="", linear_intensity_components="", print_ci=False):
+         linear_components="", linear_intensity_components="", 
+         constant_velocity_components="", constant_intensity_components="", 
+         minimum_component_sigma=3.0,
+         print_ci=False, use_full_covariance=False):
 
     # Step 1: Read data from the FITS file
     stamp_prefix = os.path.join(stampdir, stampname + "-stamp-nc")
@@ -136,6 +139,27 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
     # Step 4: initialize 2D model
     #
     params = lmfit.Parameters()
+
+    def maybe_freeze_coeffs(ABC, i_coeffs, u_coeffs, w_coeffs):
+        """
+        Potentially simplify model for component ABC
+
+        Set non-linear and/or linear terms to zero, according to user flags
+        """
+        if ABC in linear_intensity_components + constant_intensity_components:
+            i_coeffs[2] = None
+        if ABC in linear_components + constant_velocity_components:
+            # None signifies that the coefficient is fixed at zero
+            u_coeffs[2] = None
+            w_coeffs[2] = None
+        if ABC in constant_intensity_components:
+            i_coeffs[1] = None
+        if ABC in constant_velocity_components:
+            # None signifies that the coefficient is fixed at zero
+            u_coeffs[1] = None
+            w_coeffs[1] = None
+        return i_coeffs, u_coeffs, w_coeffs
+
     #  If the component was not explicitly set on the command line,
     #  then use the 2-delta solution for components A and B
     if compA is None:
@@ -147,13 +171,10 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
         i_coeffs = [compA[0], 0.0, 0.0]
         u_coeffs = [compA[1], 0.0, 0.0]
         w_coeffs = [compA[2], 0.0, 0.0]
-    if "A" in linear_intensity_components:
-        i_coeffs[2] = None
-    if "A" in linear_components:
-        # None signifies that the coefficient is fixed at zero
-        u_coeffs[2] = None
-        w_coeffs[2] = None
-    init_single_component(params, "A", i_coeffs, u_coeffs, w_coeffs)
+    i_coeffs, u_coeffs, w_coeff = maybe_freeze_coeffs("A", i_coeffs, u_coeffs, w_coeffs)
+    init_single_component(params, "A", i_coeffs, u_coeffs, w_coeffs,
+                          min_width=minimum_component_sigma)
+
 
     if ncomp > 1:
         if compB is None:
@@ -164,12 +185,9 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
             i_coeffs = [compB[0], 0.0, 0.0]
             u_coeffs = [compB[1], 0.0, 0.0]
             w_coeffs = [compB[2], 0.0, 0.0]
-        if "B" in linear_intensity_components:
-            i_coeffs[2] = None
-        if "B" in linear_components:
-            u_coeffs[2] = None
-            w_coeffs[2] = None
-        init_single_component(params, "B", i_coeffs, u_coeffs, w_coeffs)
+        i_coeffs, u_coeffs, w_coeff = maybe_freeze_coeffs("B", i_coeffs, u_coeffs, w_coeffs)
+        init_single_component(params, "B", i_coeffs, u_coeffs, w_coeffs,
+                              min_width=minimum_component_sigma)
 
     # The third component must have its parameters specified
     # explicitly via the --compC option
@@ -177,12 +195,9 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
         i_coeffs = [compC[0], 0.0, 0.0]
         u_coeffs = [compC[1], 0.0, 0.0]
         w_coeffs = [compC[2], 0.0, 0.0]
-        if "C" in linear_intensity_components:
-            i_coeffs[2] = None
-        if "C" in linear_components:
-            u_coeffs[2] = None
-            w_coeffs[2] = None
-        init_single_component(params, "C", i_coeffs, u_coeffs, w_coeffs)
+        i_coeffs, u_coeffs, w_coeff = maybe_freeze_coeffs("C", i_coeffs, u_coeffs, w_coeffs)
+        init_single_component(params, "C", i_coeffs, u_coeffs, w_coeffs,
+                              min_width=minimum_component_sigma)
 
     # Save initial guess at nebular model
     imbg0 = model(U, Y, params)
@@ -200,8 +215,8 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
     print result.message
     print
     print "Reduced chi-squared of fit: ", result.redchi
-    for name, param in params.items():
-        print name, param.stderr
+    # for name, param in params.items():
+    #     print name, param.stderr
 
     if print_ci:
         ci = lmfit.confidence.conf_interval(result)
@@ -217,7 +232,9 @@ def main(stampname, vrange, ylo, yhi, stampdir="Stamps",
     #
     imbg = model(U, Y, params)
     improp = image - imbg
-    imsig = std_from_model_fuzzing(U, Y, params, du)
+    imsig = std_from_model_fuzzing(U, Y, params, du,
+                                   nsamp=100, debug_prefix=stamp_prefix,
+                                   full_covar=use_full_covariance)
 
     # Step 7: Save everything
     #
@@ -312,9 +329,30 @@ if __name__ == "__main__":
         fixed at zero (e.g., AB)"""
     )
     parser.add_argument(
+        "--constant-velocity-components", type=str, default="",
+        help="""Which components have even the linear velocity terms
+        fixed at zero (e.g., AB)"""
+    )
+    parser.add_argument(
+        "--constant-intensity-components", type=str, default="",
+        help="""Which components have even the linear intensity terms
+        fixed at zero (e.g., AB)"""
+    )
+    parser.add_argument(
+        "--minimum-component-sigma", type=float, default=3.0,
+        help="""Minimum sigma (rms width) of individual line components.  Only set
+        this to a value less than 3.0 if you are fitting multiple components
+        to the sky line profile."""
+    )
+    parser.add_argument(
         "--print-ci", action="store_true",
         help="""Calculate and print a report of the confidence interval on the
         parameters.  WARNING: May be slow if there are many parameters"""
+    )
+    parser.add_argument(
+        "--use-full-covariance", action="store_true",
+        help="""When calculating the systematic errors, use the full covariance
+        matrix to generate the stack of fuzzed models."""
     )
     cmd_args = parser.parse_args()
     main(**vars(cmd_args))

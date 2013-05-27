@@ -7,6 +7,7 @@ import numpy as np
 from scipy.stats import norm
 import lmfit
 import astropy.io.fits as pyfits
+from astropy.table import Table
 from numpy.polynomial import Chebyshev as T
 import bottleneck as bn
 
@@ -69,7 +70,7 @@ def model_minus_data_over_sigma(params, u, y, data, sigma, du=None):
     return (model(u, y, params, du) - data)/sigma
 
 
-def init_single_component(params, ABC, i_coeffs, u_coeffs, w_coeffs):
+def init_single_component(params, ABC, i_coeffs, u_coeffs, w_coeffs, min_width=3.0):
     # k=0 corresponds to the constant term
     # k=n corresponds to the y**n yerm
     eps = 1.e-8
@@ -86,7 +87,7 @@ def init_single_component(params, ABC, i_coeffs, u_coeffs, w_coeffs):
         else:
             params.add(coeff_id, value=coeff)
     # Widths should only vary between about 2 and about 15
-    params.add(ABC+"_w0", value=w_coeffs[0], min=1.5, max=15.0)
+    params.add(ABC+"_w0", value=w_coeffs[0], min=min_width, max=15.0)
     # The variation should be even more restricted
     for k, coeff in enumerate(w_coeffs[1:], start=1):
         coeff_id = "{}_w{}".format(ABC, k)
@@ -105,7 +106,9 @@ def save_params(params, fn):
 
 
 
-def std_from_model_fuzzing(U, Y, params, du=None, nsamp=100):
+
+def std_from_model_fuzzing(U, Y, params, du=None, nsamp=100,
+                           debug_prefix=False, full_covar=False):
     """Estimate std of nebular pv image due to std of fit parameters
 
     Uses a Monte Carlo simulation of nsamp realizations of the model,
@@ -119,12 +122,19 @@ def std_from_model_fuzzing(U, Y, params, du=None, nsamp=100):
     """
     ny, nu = U.shape
     model_stack = np.empty((nsamp, ny, nu))
+    scaled_means = [p.value/find_param_scale(params, n) for n, p in params.items()]
+    scaled_covar = calculate_covar_array(params)
+    fuzzy_params_stack = []
     # Fill in a stack of nebular models, all fuzzed around the best fit
     for i in range(nsamp):
         fuzzy_params = lmfit.Parameters()
-        for name, param in params.items():
-            if param.vary:
-                fuzzy_value = np.random.normal(param.value, param.stderr)
+        fuzzy_scaled_values = np.random.multivariate_normal(scaled_means, scaled_covar)
+        for (name, param), fuzzy_scaled_value in zip(params.items(), fuzzy_scaled_values):
+            if param.vary and param.stderr > 0.0:
+                if full_covar:
+                    fuzzy_value = fuzzy_scaled_value*find_param_scale(params, name)
+                else:
+                    fuzzy_value = np.random.normal(param.value, param.stderr)
             else:
                 # pegged parameter does not vary
                 fuzzy_value = param.value
@@ -135,8 +145,55 @@ def std_from_model_fuzzing(U, Y, params, du=None, nsamp=100):
                 fuzzy_value = max(fuzzy_value, param.min)
             fuzzy_params.add(name, value=fuzzy_value)
         model_stack[i, :, :] = model(U, Y, fuzzy_params, du)
+        fuzzy_params_stack.append({k: v.value for k, v in fuzzy_params.items()})
+    if debug_prefix:
+        pyfits.PrimaryHDU(model_stack).writeto(
+            debug_prefix + "_model_stack.fits", clobber=True)
+        with open(debug_prefix + "_model_stack.tab", "w") as f:
+            f.write("\n".join(
+                Table(fuzzy_params_stack).pformat(max_lines=-1, max_width=-1)))
+        # Table(fuzzy_params_stack).write("debug_model_stack.tab", format="ascii")
     return bn.nanstd(model_stack, axis=0)
+    
 
+def find_param_scale(params, name):
+    """In order to use the covariance array sensibly, we need all the
+    parameters to have the same order of magnitude.  Otherwise, the
+    smaller of the two is affected a lot more by the covariance.
+
+    So, we use [ABC]_i0 as the scale for the intensities.  And we use
+    5 km/s as the scale for velocities and widths.
+    """
+    if "_i" in name:
+        ABC = name[0]
+        scale = params[ABC+"_i0"].value
+    else:
+        scale = 5.0
+    return scale
+
+
+def calculate_covar_array(params):
+    """Find the covariance array between each parameter in params
+
+    Calculated from the stderr and correlations that lmfit reports
+    """
+    npar = len(params)
+    parnames = params.keys()
+    covar = np.zeros((npar, npar))
+    for i, iname in enumerate(parnames):
+        iscale = find_param_scale(params, iname)
+        covar[i, i] = (params[iname].stderr/iscale)**2
+        for j, jname in enumerate(parnames):
+            if j != i:
+                jscale = find_param_scale(params, jname)
+                if params[iname].correl:
+                    correl = params[iname].correl.get(jname, 0.0)
+                else:
+                    correl = 0.0
+                covar[i, j] = correl*(
+                    params[iname].stderr/iscale)*(
+                    params[jname].stderr/jscale)
+    return covar
 
 
 if __name__ == "__main__":
