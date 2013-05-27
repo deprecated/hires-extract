@@ -17,13 +17,13 @@ PLATE_SCALE = 0.382
 J1, J2 = 13, 49
 
 
-def extract_stamps(specid, extractdir, stampdir):
+def extract_stamps(specid, extractdir, stampdir, dbfile=DB_FILE_NAME):
     """
     For each line in the database,
     produce a postage stamp calibrated 2D spectrum
     """
     # Utility functions
-    def order_file(iorder, suffix1="o", suffix2=""):
+    def order_file(iorder, suffix1="f", suffix2=""):
         """Return the CR-rejected, rectified, de-overlapped
         image of the  isolated order"""
         return os.path.join(
@@ -65,7 +65,7 @@ def extract_stamps(specid, extractdir, stampdir):
         return m, b
 
     # Read in the line database
-    linedb = yaml.load(open(os.path.join(stampdir, DB_FILE_NAME)))
+    linedb = yaml.load(open(os.path.join(stampdir, dbfile)))
     for lineid, emline in linedb.items():
         inhdulist = pyfits.open(order_file(emline["iorder"]))
         print lineid
@@ -135,6 +135,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--stampdir", type=str, default="Stamps",
         help="""Directory for placing the results"""
+    )
+    parser.add_argument(
+        "--dbfile", type=str, default=DB_FILE_NAME,
+        help="""JSON file containing list of emission lines to extract"""
     )
 
     cmd_args = parser.parse_args()
