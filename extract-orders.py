@@ -61,6 +61,7 @@ def extract_orders(specfile, wavfile, regionfile, outdir,
     """
 
     imhdu = pyfits.open(specfile + ".fits")[0]
+    badpixhdu = pyfits.open(specfile + ".fits")["BADPIX"]
     wavhdu, = pyfits.open(wavfile + ".fits")
     regions = pyregion.open(regionfile + ".reg")
 
@@ -134,6 +135,7 @@ def extract_orders(specfile, wavfile, regionfile, outdir,
         bbox = (slice(start, stop+6), bbox[1])
 
         imorder = imhdu.data.copy()[bbox]
+        badpixorder = badpixhdu.data.copy()[bbox]
         wavorder = wavhdu.data.copy()[bbox]
         # Construct a mask of all pixels both methods say
         # should be in this order
@@ -188,6 +190,10 @@ def extract_orders(specfile, wavfile, regionfile, outdir,
             )
             # Use nearest-neighbor for the masks,
             # so they don't get converted to reals
+            badpixorder = scipy.interpolate.griddata(
+                (x.ravel(), y.ravel()), badpixorder.ravel(),
+                (grid_x, grid_y), method="nearest"
+            )
             m = scipy.interpolate.griddata(
                 (x.ravel(), y.ravel()), m.ravel(),
                 (grid_x, grid_y), method="nearest"
@@ -206,19 +212,22 @@ def extract_orders(specfile, wavfile, regionfile, outdir,
                     # apply the shift to all the arrays
                     # (except meanwav, which is constant in y)
                     imorder[chunk] = np.roll(imorder[chunk], -jshift, axis=0)
+                    badpixorder[chunk] = np.roll(badpixorder[chunk], -jshift, axis=0)
                     m[chunk] = np.roll(m[chunk], -jshift, axis=0)
                     mm[chunk] = np.roll(mm[chunk], -jshift, axis=0)
 
         # Trim the useless space off the top
         imorder = imorder[:-jtrim, :]
+        badpixorder = badpixorder[:-jtrim, :]
         meanwav = meanwav[:-jtrim, :]
         # And save each order to FITS files
         pri = pyfits.PrimaryHDU()
         sci = pyfits.ImageHDU(imorder, name='SCI')
+        bad = pyfits.ImageHDU(badpixorder, name='BAD')
         wav = pyfits.ImageHDU(meanwav, name='WAV')
         outfile = "{}-order{}.fits".format(os.path.split(specfile)[-1], iorder)
         outfile = os.path.join(outdir, outfile)
-        pyfits.HDUList([pri, sci, wav]).writeto(outfile, clobber=True)
+        pyfits.HDUList([pri, sci, wav, bad]).writeto(outfile, clobber=True)
 
 
 if __name__ == "__main__":
