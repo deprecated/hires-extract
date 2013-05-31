@@ -7,7 +7,7 @@ import numpy as np
 def remove_stray_light(specid, extractdir):
 
     # Utility functions
-    def order_file(iorder, suffix1="b-cr", suffix2=""):
+    def order_file(iorder, suffix1="n", suffix2=""):
         """Return the rectified image of the  isolated order
 
         Optional argument suffix2 can be used to select the

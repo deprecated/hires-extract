@@ -17,11 +17,13 @@ def pixel_noise(specid, extractdir, gain, readout):
     orders = range(51, 77)
     for iorder in orders:
         print "Processing ", iorder
-        hdulist = pyfits.open(order_file(iorder, specid), mode='update')
+        hdulist = pyfits.open(order_file(iorder, specid))
         image = hdulist["SCI"].data
         sig2 = image/gain + (readout/gain)**2
+        # Forcibly remove any existing "SIGMA" hdus
+        hdulist = pyfits.HDUList([hdu for hdu in hdulist if hdu.name != "SIGMA"])
         hdulist.append(pyfits.ImageHDU(np.sqrt(sig2), name="SIGMA"))
-        hdulist.flush(output_verify="fix")
+        hdulist.writeto(order_file(iorder, specid, suffix1="n"), clobber=True)
 
 
 if __name__ == "__main__":
