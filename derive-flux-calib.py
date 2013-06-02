@@ -3,6 +3,7 @@ from numpy.polynomial import Chebyshev as T
 import astropy.io.fits as pyfits
 import lmfit
 import yaml
+import argparse
 
 ORDERMIN, ORDERMAX = 51, 76
 # HST 1 slit 
@@ -19,7 +20,7 @@ DWAV = 5.0
 
            
 
-def main():
+def main(npoly):
     orders = range(ORDERMIN, ORDERMAX)
     linedb = yaml.load(open("Stamps/line-database.json"))
     for i in orders:
@@ -42,14 +43,23 @@ def main():
 
         print i, len(mask), sum(mask)
 
+        # Normalize the wavelength scale
+        wavmin, wavmax = np.min(wav[mask]), np.max(wav[mask])
+        x = (wav - wavmin)/(wavmax - wavmin)
         # Fit third order polynomial
-        # coeffs = np.polyfit(wav, ratio, 3)
-        # p = np.poly1d(coeffs)
-
-        # print i, coeffs
-
+        try: 
+            coeffs = np.polyfit(x[mask], ratio[mask], npoly)
+            p = np.poly1d(coeffs)
+            print coeffs
+        except:
+            print "polyfit failed"
         
 
 
 if __name__ == "__main__":
-    main()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--npoly", type=int, default=3, help="Order of polynomial")
+    cmd_args = parser.parse_args()
+
+    main(**vars(cmd_args))
