@@ -30,7 +30,7 @@ def divide_by_flat(specid, quartzid, extractdir, interorder_divide):
             flat_image /= reddest_order_mean
         else:
             # But by default, just scale to mean within this order
-            flat_image /= flat_image.mean() 
+            flat_image /= flat_image[-50:-10].mean() 
         image /= flat_image[None,:]
         sigma /= flat_image[None,:]
         hdulist.writeto(order_file(iorder, specid, suffix1="f"), clobber=True)
