@@ -6,7 +6,6 @@ import scipy.ndimage as ndi
 import scipy.interpolate
 import skimage.morphology
 import os
-import bottleneck as bn
 
 INTERPOLATE = "linear"
 
@@ -21,7 +20,7 @@ box2label = {
 
 
 # Orders up to 71 are well-separated and work with both methods
-ordermax = 71
+ordermax = 20 # 71
 
 
 def shrink_box(r, h=8.0):
@@ -90,8 +89,8 @@ def extract_orders(specfile, wavfile, regionfile, outdir,
     # save a copy of the labels for debugging
     pyfits.PrimaryHDU(labels).writeto("orders-labels.fits", clobber=True)
 
-    print "Number of order boxes found: ", len(ordernames)
-    print "Number of objects found: ", nlabels
+    print("Number of order boxes found:", len(ordernames))
+    print("Number of objects found:", nlabels)
 
     for widefilter, orderfilter, ordername, tilt, ypix_frac in zip(
             wide_filters, filters, ordernames, tilts, ypix_fractions):
@@ -109,22 +108,22 @@ def extract_orders(specfile, wavfile, regionfile, outdir,
         # First find wavelengths that ought to fall in the order
         orderwavs = wavhdu.data[ordermask & wavmask]
         if len(orderwavs):
-            print "{}: {:.2f}-{:.2f}".format(
-                ordername, orderwavs.min(), orderwavs.max())
+            print("{}: {:.2f}-{:.2f}".format(
+                ordername, orderwavs.min(), orderwavs.max()))
         else:
-            print "{}: No valid wavelengths found".format(ordername)
+            print("{}: No valid wavelengths found".format(ordername))
 
         # Second, look at wavelengths in the contiguous wavelength box
         # that we found
         label = box2label[iorder]
         orderwavs = wavhdu.data[labels == label]
         if len(orderwavs):
-            print "Label {}: {:.2f}-{:.2f}".format(
-                label, orderwavs.min(), orderwavs.max())
+            print("Label {}: {:.2f}-{:.2f}".format(
+                label, orderwavs.min(), orderwavs.max()))
         else:
-            print "{}*: No valid wavelengths found".format(ordername)
+            print("{}*: No valid wavelengths found".format(ordername))
 
-        print
+        print()
 
         # enclosing rectangle around this entire order
         bbox, = ndi.find_objects(widemask.astype(int))
@@ -151,14 +150,19 @@ def extract_orders(specfile, wavfile, regionfile, outdir,
         m = m[bbox]
         cm = cm[bbox]
 
+        cm = cm & (wavorder > 4000.0)
         print(
-            "Number of good wavelength pixels found in order box: ",
+            "Number of good wavelength pixels found in order box:",
             np.sum(m), np.sum(cm))
         mm = widemask[bbox]     # less stringent mask
 
         # Use a single average wavelength for each column
         ny, nx = wavorder.shape
-        meanwav = bn.nansum(wavorder*cm, axis=0) / bn.nansum(cm, axis=0)
+        # print(wavorder[::10, ::200].astype(int))
+        # print(cm[::10, ::200])
+        # meanwav = np.average(wavorder, axis=0, weights=cm.astype(int))
+        meanwav = np.nansum(wavorder*cm.astype(int), axis=0) / np.nansum(cm.astype(int), axis=0)
+        # print(meanwav[::200])
         meanwav = np.vstack([meanwav]*ny)
 
         #
